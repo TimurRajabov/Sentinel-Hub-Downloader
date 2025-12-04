@@ -13,7 +13,7 @@ services:
       - ./geojson:/app/geojson
       - ./logs:/app/logs
 
-  # ---- SonarQube ----
+
   sonarqube:
     image: sonarqube:community
     container_name: sonarqube
@@ -27,7 +27,7 @@ services:
       - sonarqube_extensions:/opt/sonarqube/extensions
       - sonarqube_logs:/opt/sonarqube/logs
 
-  # ---- cAdvisor Monitoring ----
+
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
     container_name: cadvisor
@@ -40,7 +40,7 @@ services:
       - /sys:/sys:ro
       - /dev/disk/:/dev/disk:ro
 
-  # ---- Linting ----
+
   lint:
     image: python:3.10
     container_name: sentinel5p-lint
@@ -60,7 +60,6 @@ services:
         mypy .
       "
 
-  # ---- Trivy Security Scan ----
   trivy:
     image: aquasec/trivy:latest
     container_name: trivy-scan
