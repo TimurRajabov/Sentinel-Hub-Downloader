@@ -1,0 +1,80 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    container_name: sentinel5p-api
+    restart: always
+    env_file: .env
+    ports:
+      - "8120:8000"
+    volumes:
+      - ./data:/app/data
+      - ./geojson:/app/geojson
+      - ./logs:/app/logs
+
+  # ---- SonarQube ----
+  sonarqube:
+    image: sonarqube:community
+    container_name: sonarqube
+    restart: always
+    ports:
+      - "9100:9000"
+    environment:
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+
+  # ---- cAdvisor Monitoring ----
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: always
+    ports:
+      - "8110:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /dev/disk/:/dev/disk:ro
+
+  # ---- Linting ----
+  lint:
+    image: python:3.10
+    container_name: sentinel5p-lint
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: >
+      bash -c "
+        pip install flake8 black isort mypy &&
+        echo '---- Running isort ----' &&
+        isort . &&
+        echo '---- Running black ----' &&
+        black . &&
+        echo '---- Running flake8 ----' &&
+        flake8 . --exclude=venv,.venv,__pycache__,*.egg-info &&
+        echo '---- Running mypy ----' &&
+        mypy .
+      "
+
+  # ---- Trivy Security Scan ----
+  trivy:
+    image: aquasec/trivy:latest
+    container_name: trivy-scan
+    volumes:
+      - ./:/app:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /app
+    command: >
+      bash -c "
+        trivy fs /app &&
+        trivy image sentinel5p-api || true
+      "
+
+volumes:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
