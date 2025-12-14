@@ -12,21 +12,85 @@ services:
       - ./data:/app/data
       - ./geojson:/app/geojson
       - ./logs:/app/logs
+    networks:
+      - sentinel-net
 
+  # ===============================
+  #   AUTO DOWNLOAD — GASES
+  # ===============================
+  sentinel-gases:
+    build: .
+    container_name: sentinel5p-gases
+    restart: always
+    env_file: .env
+    command: python download_all.py
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - sentinel-net
 
+  # ===============================
+  #   AUTO DOWNLOAD — TEMPERATURE
+  # ===============================
+  sentinel-temperature:
+    build: .
+    container_name: sentinel5p-temperature
+    restart: always
+    env_file: .env
+    command: python temp.py
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - sentinel-net
+
+  # ===============================
+  #   AUTO DOWNLOAD — WIND
+  # ===============================
+  sentinel-wind:
+    build: .
+    container_name: sentinel5p-wind
+    restart: always
+    env_file: .env
+    command: python wind.py
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - sentinel-net
+
+  # ===============================
+  #   SONARQUBE
+  # ===============================
   sonarqube:
     image: sonarqube:community
     container_name: sonarqube
     restart: always
     ports:
-      - "9100:9000"
+      - "9101:9000"
     environment:
       - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
     volumes:
       - sonarqube_data:/opt/sonarqube/data
       - sonarqube_extensions:/opt/sonarqube/extensions
       - sonarqube_logs:/opt/sonarqube/logs
+    networks:
+      - sentinel-net
 
+  scanner:
+    image: sonarsource/sonar-scanner-cli:latest
+    container_name: sonar-scanner
+    depends_on:
+      - sonarqube
+    environment:
+      SONAR_HOST_URL: http://sonarqube:9000
+      SONAR_TOKEN: ${SONAR_TOKEN} #поставили свой токен если надо 
+    volumes:
+      - ./:/usr/src
+    networks:
+      - sentinel-net
+    entrypoint: ["sleep", "infinity"]
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
@@ -39,7 +103,8 @@ services:
       - /var/run:/var/run:rw
       - /sys:/sys:ro
       - /dev/disk/:/dev/disk:ro
-
+    networks:
+      - sentinel-net
 
   lint:
     image: python:3.10
@@ -50,15 +115,13 @@ services:
     command: >
       bash -c "
         pip install flake8 black isort mypy &&
-        echo '---- Running isort ----' &&
         isort . &&
-        echo '---- Running black ----' &&
         black . &&
-        echo '---- Running flake8 ----' &&
         flake8 . --exclude=venv,.venv,__pycache__,*.egg-info &&
-        echo '---- Running mypy ----' &&
         mypy .
       "
+    networks:
+      - sentinel-net
 
   trivy:
     image: aquasec/trivy:latest
@@ -72,8 +135,14 @@ services:
         trivy fs /app &&
         trivy image sentinel5p-api || true
       "
+    networks:
+      - sentinel-net
 
 volumes:
   sonarqube_data:
   sonarqube_extensions:
   sonarqube_logs:
+
+networks:
+  sentinel-net:
+    driver: bridge

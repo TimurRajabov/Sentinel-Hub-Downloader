@@ -1,12 +1,16 @@
-fastapi
-uvicorn[standard]
+fastapi==0.103.2
+pydantic==1.10.13
+uvicorn
 
 numpy
 rasterio
 rioxarray
 shapely
-
-pydantic
 python-multipart
-
 geojson
+
+pytest
+pytest-cov
+coverage
+requests
+python-dotenv
