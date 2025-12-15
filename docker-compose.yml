@@ -9,8 +9,13 @@ services:
     ports:
       - "8120:8000"
     volumes:
-      - ./data:/app/data
-      - ./geojson:/app/geojson
+      # DATA (общая для всех сервисов)
+      - /home/temur/Documents/Work/goo/data:/data
+
+      # GEOJSON
+      - /home/temur/Documents/Work/goo/geojson/uzbekistan_regions_backup.geojson:/geojson/uzbekistan_regions_backup.geojson
+
+      # LOGS
       - ./logs:/app/logs
     networks:
       - sentinel-net
@@ -25,7 +30,7 @@ services:
     env_file: .env
     command: python download_all.py
     volumes:
-      - ./data:/app/data
+      - /home/temur/Documents/Work/goo/data:/data
       - ./logs:/app/logs
     networks:
       - sentinel-net
@@ -40,7 +45,7 @@ services:
     env_file: .env
     command: python temp.py
     volumes:
-      - ./data:/app/data
+      - /home/temur/Documents/Work/goo/data:/data
       - ./logs:/app/logs
     networks:
       - sentinel-net
@@ -55,7 +60,7 @@ services:
     env_file: .env
     command: python wind.py
     volumes:
-      - ./data:/app/data
+      - /home/temur/Documents/Work/goo/data:/data
       - ./logs:/app/logs
     networks:
       - sentinel-net
@@ -85,7 +90,7 @@ services:
       - sonarqube
     environment:
       SONAR_HOST_URL: http://sonarqube:9000
-      SONAR_TOKEN: ${SONAR_TOKEN} #поставили свой токен если надо 
+      SONAR_TOKEN: ${SONAR_TOKEN}
     volumes:
       - ./:/usr/src
     networks:
@@ -103,38 +108,6 @@ services:
       - /var/run:/var/run:rw
       - /sys:/sys:ro
       - /dev/disk/:/dev/disk:ro
-    networks:
-      - sentinel-net
-
-  lint:
-    image: python:3.10
-    container_name: sentinel5p-lint
-    working_dir: /app
-    volumes:
-      - ./:/app
-    command: >
-      bash -c "
-        pip install flake8 black isort mypy &&
-        isort . &&
-        black . &&
-        flake8 . --exclude=venv,.venv,__pycache__,*.egg-info &&
-        mypy .
-      "
-    networks:
-      - sentinel-net
-
-  trivy:
-    image: aquasec/trivy:latest
-    container_name: trivy-scan
-    volumes:
-      - ./:/app:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    working_dir: /app
-    command: >
-      bash -c "
-        trivy fs /app &&
-        trivy image sentinel5p-api || true
-      "
     networks:
       - sentinel-net
 

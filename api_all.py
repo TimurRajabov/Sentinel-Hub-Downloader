@@ -1,66 +1,47 @@
 import json
 import os
+import shutil
 from datetime import datetime
 
 import numpy as np
 import rioxarray
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from shapely.geometry import shape
 
-# ----------------------------------------------------------
-# LOAD ENV
-# ----------------------------------------------------------
-
+# -------------------- LOAD ENV --------------------
 load_dotenv()
 
-# ----------------------------------------------------------
-# APP + CORS
-# ----------------------------------------------------------
-
+# -------------------- APP --------------------
 app = FastAPI()
 
-# CORS — важно, чтобы он был ПЕРВЫМ!
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # ngrok требует *
-    allow_credentials=False,  # иначе нельзя использовать *
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# Фикс для ngrok FREE — обрабатываем preflight вручную
 @app.options("/{full_path:path}")
 def options_handler(full_path: str):
     return Response(status_code=204)
 
 
-# ----------------------------------------------------------
-# CONFIG
-# ----------------------------------------------------------
+# -------------------- ENV PATHS --------------------
+SAVE_PATH = os.getenv("SAVE_PATH")
+GEOJSON_PATH = os.getenv("GEOJSON_PATH")
 
-TIFF_ROOT = os.getenv("TIFF_ROOT", "data/new_tif")
+if not SAVE_PATH:
+    raise RuntimeError("SAVE_PATH is not set in environment")
 
-LEFT_LON = float(os.getenv("LEFT_LON", 48))
-RIGHT_LON = float(os.getenv("RIGHT_LON", 80))
-BOTTOM_LAT = float(os.getenv("BOTTOM_LAT", 32))
-TOP_LAT = float(os.getenv("TOP_LAT", 48))
+if not GEOJSON_PATH:
+    raise RuntimeError("GEOJSON_PATH is not set in environment")
 
-# GeoJSON path
-geojson_env = os.getenv("GEOJSON_PATH")
-if geojson_env and geojson_env.strip():
-    GEOJSON_PATH = os.path.abspath(geojson_env)
-else:
-    GEOJSON_PATH = (
-        "/home/temur/Documents/Work/goo/geojson/uzbekistan_regions_backup.geojson"
-    )
-
-print("Using GEOJSON_PATH:", GEOJSON_PATH)
-print("Exists:", os.path.exists(GEOJSON_PATH))
-
+# -------------------- GAS CONFIG --------------------
 GAS_UNITS = {
     "CH4": "ppm",
     "CO": "mol/km²",
@@ -72,36 +53,39 @@ GAS_UNITS = {
 }
 
 
-# ----------------------------------------------------------
-# HELPERS
-# ----------------------------------------------------------
+# -------------------- HELPERS --------------------
+def get_gas_dir(gas: str) -> str:
+    return os.path.join(SAVE_PATH, gas.upper())
 
 
-def get_gas_dir(gas):
-    return os.path.join(TIFF_ROOT, gas.upper())
-
-
-def list_tiffs(gas):
+def list_tiffs(gas: str):
     folder = get_gas_dir(gas)
     if not os.path.exists(folder):
         return []
     return sorted(
-        [os.path.join(folder, f) for f in os.listdir(folder) if f.endswith(".tif")]
+        os.path.join(folder, f) for f in os.listdir(folder) if f.endswith(".tif")
     )
 
 
-def extract_period_from_filename(fname):
-    # format: CH4_2025-11-26.tif
+def extract_gas_from_filename(filename: str) -> str:
+    gas = filename.split("_")[0].upper()
+    if gas not in GAS_UNITS:
+        raise ValueError(f"Unknown gas '{gas}'")
+    return gas
+
+
+def extract_period_from_filename(fname: str) -> str:
     return fname.replace(".tif", "").split("_")[-1]
 
 
-def to_dd_mm_yyyy(date_str):
+def to_dd_mm_yyyy(date_str: str) -> str:
     return datetime.strptime(date_str, "%Y-%m-%d").strftime("%d-%m-%Y")
 
 
 def compute_mean_for_gas(gas: str, values: np.ndarray) -> float:
     finite = values[np.isfinite(values)]
     finite = finite[(finite >= 0) & (finite < 1e20)]
+
     if finite.size == 0:
         return 0.0
 
@@ -116,26 +100,20 @@ def compute_mean_for_gas(gas: str, values: np.ndarray) -> float:
     return round(raw_mean, 3)
 
 
-# ----------------------------------------------------------
-# API
-# ----------------------------------------------------------
-
-
+# -------------------- ANALYTICS API --------------------
 @app.get("/api/air_monitoring_points")
 async def air_monitoring_points(gas: str, region: int):
     gas = gas.upper()
 
     if gas not in GAS_UNITS:
-        return JSONResponse({"error": f"Unknown gas '{gas}'"}, status_code=400)
+        return JSONResponse({"error": "Unknown gas"}, 400)
 
     if not os.path.exists(GEOJSON_PATH):
-        return JSONResponse({"error": "GeoJSON file not found"}, status_code=404)
+        return JSONResponse({"error": "GeoJSON file not found"}, 404)
 
-    # Load GeoJSON
     with open(GEOJSON_PATH, "r", encoding="utf-8") as f:
         gj = json.load(f)
 
-    # Find region by SOATO
     feature = next(
         (
             feat
@@ -146,32 +124,26 @@ async def air_monitoring_points(gas: str, region: int):
     )
 
     if not feature:
-        return JSONResponse({"error": f"Region {region} not found"}, 404)
+        return JSONResponse({"error": "Region not found"}, 404)
 
     region_polygon = shape(feature["geometry"])
 
-    # List TIFF files
     tiffs = list_tiffs(gas)
     if not tiffs:
-        return JSONResponse({"error": f"No TIFF files for gas {gas}"}, 404)
+        return JSONResponse({"error": "No TIFF files"}, 404)
 
     results = []
 
     for tif_path in tiffs:
         fname = os.path.basename(tif_path)
-        iso_date = extract_period_from_filename(fname)
-        period = to_dd_mm_yyyy(iso_date)
+        period = to_dd_mm_yyyy(extract_period_from_filename(fname))
 
-        # Read raster
         da = rioxarray.open_rasterio(tif_path).squeeze()
         da = da.rio.write_crs("EPSG:4326", inplace=False)
 
-        # Clip by region
         clipped = da.rio.clip([region_polygon.__geo_interface__], drop=False)
 
-        # Compute mean value
-        values = clipped.values.flatten()
-        mean_value = compute_mean_for_gas(gas, values)
+        mean_value = compute_mean_for_gas(gas, clipped.values.flatten())
 
         results.append(
             {
@@ -183,3 +155,25 @@ async def air_monitoring_points(gas: str, region: int):
         )
 
     return results
+
+
+# -------------------- UPLOAD API --------------------
+@app.post("/api/upload_tiff")
+async def upload_tiff(file: UploadFile = File(...)):
+    if not file.filename or not file.filename.endswith(".tif"):
+        raise HTTPException(400, "Only .tif files allowed")
+
+    try:
+        gas = extract_gas_from_filename(file.filename)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    gas_dir = get_gas_dir(gas)
+    os.makedirs(gas_dir, exist_ok=True)
+
+    save_path = os.path.join(gas_dir, file.filename)
+
+    with open(save_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    return {"status": "ok", "gas": gas, "saved_to": save_path}

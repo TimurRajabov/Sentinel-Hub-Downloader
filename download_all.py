@@ -2,7 +2,7 @@ import os
 import time
 from datetime import datetime, timedelta
 
-import ee # type: ignore
+import ee  # type: ignore
 import requests
 from dotenv import load_dotenv
 

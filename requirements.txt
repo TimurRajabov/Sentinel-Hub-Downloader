@@ -9,8 +9,11 @@ shapely
 python-multipart
 geojson
 
+requests
+python-dotenv
+
+earthengine-api
+
 pytest
 pytest-cov
 coverage
-requests
-python-dotenv
