@@ -6,7 +6,12 @@ import ee
 import requests
 from dotenv import load_dotenv
 
-# ---------- LOAD ENV ----------
+try:
+    from zoneinfo import ZoneInfo  # Python 3.9+
+except ImportError:
+    raise RuntimeError("Нужен Python 3.9+ (zoneinfo)")
+
+
 load_dotenv()
 
 PROJECT_ID = os.getenv("PROJECT_ID")
@@ -16,51 +21,67 @@ RIGHT_LON = float(os.getenv("RIGHT_LON"))
 BOTTOM_LAT = float(os.getenv("BOTTOM_LAT"))
 TOP_LAT = float(os.getenv("TOP_LAT"))
 
-SAVE_PATH = os.getenv("SAVE_PATH")
+SAVE_PATH = os.getenv("SAVE_PATH", "/data")
 
-# ---------- OUTPUT ----------
+RUN_AT = os.getenv("RUN_AT", "00:00")
+RUN_TZ = os.getenv("RUN_TZ", "UTC")
+
+START_DATE = os.getenv("START_DATE")
+END_DATE = os.getenv("END_DATE")
+
+
+def parse_day(s: str | None) -> date | None:
+    if not s:
+        return None
+    return datetime.strptime(s, "%Y-%m-%d").date()
+
+
+START_DAY = parse_day(START_DATE)
+END_DAY = parse_day(END_DATE)
+
+if START_DAY is None or END_DAY is None:
+    raise RuntimeError("В .env нужно задать START_DATE и END_DATE в формате YYYY-MM-DD")
+if START_DAY > END_DAY:
+    raise RuntimeError("START_DATE не может быть больше END_DATE")
+
+
 OUTPUT_DIR = os.path.join(SAVE_PATH, "wind")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# ---------- CONSTANTS ----------
 COLLECTION_ID = "ECMWF/ERA5/HOURLY"
 BANDS = ["u_component_of_wind_10m", "v_component_of_wind_10m"]
 SCALE_METERS = 27827
 CRS = "EPSG:4326"
 
-# ---------- INIT GEE ----------
 ee.Initialize(project=PROJECT_ID)
-
 region_geom = ee.Geometry.Rectangle([LEFT_LON, BOTTOM_LAT, RIGHT_LON, TOP_LAT])
 
 
-# ---------- HELPERS ----------
+def sleep_until_scheduled_time():
+    tz = ZoneInfo(RUN_TZ)
+    now = datetime.now(tz)
+
+    hour, minute = map(int, RUN_AT.split(":"))
+    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+
+    seconds = (target - now).total_seconds()
+    print(f"\n😴 Ждём до {target.strftime('%Y-%m-%d %H:%M %Z')} ({int(seconds)} сек)")
+    time.sleep(seconds)
+
+
 def get_last_downloaded_day():
     dates = set()
-
     for f in os.listdir(OUTPUT_DIR):
         try:
             d = f.split("_")[0]
             dates.add(datetime.strptime(d, "%Y%m%d").date())
-        except:
+        except Exception:
             pass
-
     return max(dates) if dates else None
 
 
-def sleep_until_midnight_utc():
-    now = datetime.utcnow()
-    next_midnight = (now + timedelta(days=1)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    seconds = (next_midnight - now).total_seconds()
-    print(f"\n😴 Ждём до 00:00 UTC ({int(seconds)} сек)")
-    time.sleep(seconds)
-
-
-# -------------------------------------------------
-#   BUILDER: СУТОЧНАЯ КОЛЛЕКЦИЯ ВЕТРА
-# -------------------------------------------------
 def build_image_and_mapping(day_py: date):
     day_iso = day_py.isoformat()
     date_str = day_py.strftime("%Y%m%d")
@@ -73,6 +94,7 @@ def build_image_and_mapping(day_py: date):
         .filterDate(start, end)
         .filterBounds(region_geom)
         .select(BANDS)
+        .sort("system:time_start")
     )
 
     count = era5.size().getInfo()
@@ -92,7 +114,6 @@ def build_image_and_mapping(day_py: date):
             new_name = f"{date_str}_U_{hour:02d}"
             mapping.append((b, new_name))
             seen_u = True
-
         elif "v_component_of_wind_10m" in b:
             new_name = f"{date_str}_V_{hour:02d}"
             mapping.append((b, new_name))
@@ -104,11 +125,8 @@ def build_image_and_mapping(day_py: date):
     return img, mapping
 
 
-# -------------------------------------------------
-#   СКАЧИВАНИЕ ЗА ДЕНЬ
-# -------------------------------------------------
 def download_era5_for_day(day_py: date):
-    print(f"\n=== 🌬 Ветер {day_py} ===")
+    print(f"\n=== 🌬 Ветер {day_py} (UTC-данные) ===")
 
     img, mapping = build_image_and_mapping(day_py)
     if img is None:
@@ -126,12 +144,7 @@ def download_era5_for_day(day_py: date):
 
         try:
             url = single_img.getDownloadURL(
-                {
-                    "scale": SCALE_METERS,
-                    "region": region_geom,
-                    "crs": CRS,
-                    "format": "GEO_TIFF",
-                }
+                {"scale": SCALE_METERS, "region": region_geom, "crs": CRS, "format": "GEO_TIFF"}
             )
             resp = requests.get(url, stream=True, timeout=120)
             resp.raise_for_status()
@@ -147,35 +160,32 @@ def download_era5_for_day(day_py: date):
         print("    ✔ OK")
 
 
-# -------------------------------------------------
-#   SYNC LOGIC
-# -------------------------------------------------
 def run_sync():
-    today = datetime.utcnow().date()
-    last_available_day = today - timedelta(days=1)
+    print(f"\n🚀 Синхронизация ветра в диапазоне: {START_DAY} .. {END_DAY}")
 
     last_day = get_last_downloaded_day()
 
     if last_day:
-        day = last_day + timedelta(days=1)
-        print(f"▶ Продолжаем с {day}")
+        day = max(last_day + timedelta(days=1), START_DAY)
+        print(f"▶ Продолжаем с {day} (последний файл был {last_day})")
     else:
-        day = last_available_day
-        print("▶ Нет файлов — стартуем с последнего дня")
+        day = START_DAY
+        print(f"▶ Нет файлов — стартуем с START_DATE={START_DAY}")
 
-    while day <= last_available_day:
+    if day > END_DAY:
+        print("✅ Уже всё скачано в заданном диапазоне")
+        return
+
+    while day <= END_DAY:
         download_era5_for_day(day)
         day += timedelta(days=1)
 
 
-# -------------------------------------------------
-#   AUTO MODE (00:00 UTC)
-# -------------------------------------------------
 if __name__ == "__main__":
-    print("🟢 Автоскачивание ветра запущено (00:00 UTC)")
+    print(f"🟢 Автоскачивание ветра (RUN_AT={RUN_AT}, RUN_TZ={RUN_TZ}) диапазон={START_DAY}..{END_DAY}")
 
     while True:
-        sleep_until_midnight_utc()
+        sleep_until_scheduled_time()
         try:
             run_sync()
         except Exception as e:

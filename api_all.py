@@ -1,179 +1,159 @@
-import json
 import os
-import shutil
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 
-import numpy as np
-import rioxarray
+import ee  # type: ignore
+import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
-from shapely.geometry import shape
 
-# -------------------- LOAD ENV --------------------
+try:
+    from zoneinfo import ZoneInfo  # Python 3.9+
+except ImportError:
+    raise RuntimeError("Нужен Python 3.9+ (zoneinfo)")
+
+
+# ---------- LOAD ENV ----------
 load_dotenv()
 
-# -------------------- APP --------------------
-app = FastAPI()
+PROJECT_ID = os.getenv("PROJECT_ID")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+LEFT_LON = float(os.getenv("LEFT_LON"))
+RIGHT_LON = float(os.getenv("RIGHT_LON"))
+BOTTOM_LAT = float(os.getenv("BOTTOM_LAT"))
+TOP_LAT = float(os.getenv("TOP_LAT"))
 
-
-@app.options("/{full_path:path}")
-def options_handler(full_path: str):
-    return Response(status_code=204)
-
-
-# -------------------- ENV PATHS --------------------
 SAVE_PATH = os.getenv("SAVE_PATH")
-GEOJSON_PATH = os.getenv("GEOJSON_PATH")
 
-if not SAVE_PATH:
-    raise RuntimeError("SAVE_PATH is not set in environment")
+RUN_AT = os.getenv("RUN_AT", "00:00")          # HH:MM
+RUN_TZ = os.getenv("RUN_TZ", "UTC")            # UTC или Asia/Tashkent
 
-if not GEOJSON_PATH:
-    raise RuntimeError("GEOJSON_PATH is not set in environment")
 
-# -------------------- GAS CONFIG --------------------
-GAS_UNITS = {
-    "CH4": "ppm",
-    "CO": "mol/km²",
-    "NO2": "mol/km²",
-    "SO2": "mol/km²",
-    "HCHO": "mol/km²",
-    "O3": "mol/m²",
-    "AERAI": "unitless",
+# ---------- INIT EE ----------
+ee.Initialize(project=PROJECT_ID)
+
+region = ee.Geometry.Rectangle([LEFT_LON, BOTTOM_LAT, RIGHT_LON, TOP_LAT])
+
+
+# ---------- DATASETS ----------
+gases = {
+    "CH4": ("COPERNICUS/S5P/OFFL/L3_CH4", "CH4_column_volume_mixing_ratio_dry_air"),
+    "CO": ("COPERNICUS/S5P/OFFL/L3_CO", "CO_column_number_density"),
+    "NO2": ("COPERNICUS/S5P/OFFL/L3_NO2", "NO2_column_number_density"),
+    "SO2": ("COPERNICUS/S5P/OFFL/L3_SO2", "SO2_column_number_density"),
+    "O3": ("COPERNICUS/S5P/OFFL/L3_O3", "O3_column_number_density"),
+    "HCHO": ("COPERNICUS/S5P/OFFL/L3_HCHO", "tropospheric_HCHO_column_number_density"),
+    "AERAI": ("COPERNICUS/S5P/OFFL/L3_AER_AI", "absorbing_aerosol_index"),
 }
 
 
-# -------------------- HELPERS --------------------
-def get_gas_dir(gas: str) -> str:
-    return os.path.join(SAVE_PATH, gas.upper())
-
-
-def list_tiffs(gas: str):
-    folder = get_gas_dir(gas)
+# ---------- HELPERS ----------
+def get_last_downloaded_date(gas_name):
+    folder = os.path.join(SAVE_PATH, gas_name)
     if not os.path.exists(folder):
-        return []
-    return sorted(
-        os.path.join(folder, f) for f in os.listdir(folder) if f.endswith(".tif")
-    )
+        return None
+
+    dates = []
+    for f in os.listdir(folder):
+        try:
+            d = f.split("_")[1].replace(".tif", "")
+            dates.append(datetime.strptime(d, "%Y-%m-%d").date())
+        except Exception:
+            pass
+
+    return max(dates) if dates else None
 
 
-def extract_gas_from_filename(filename: str) -> str:
-    gas = filename.split("_")[0].upper()
-    if gas not in GAS_UNITS:
-        raise ValueError(f"Unknown gas '{gas}'")
-    return gas
+def sleep_until_scheduled_time():
+    tz = ZoneInfo(RUN_TZ)
+    now = datetime.now(tz)
+
+    hour, minute = map(int, RUN_AT.split(":"))
+
+    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+
+    seconds = (target - now).total_seconds()
+
+    print(f"\n😴 Ожидание до {target.strftime('%Y-%m-%d %H:%M %Z')} "
+          f"({int(seconds)} сек)")
+    time.sleep(seconds)
 
 
-def extract_period_from_filename(fname: str) -> str:
-    return fname.replace(".tif", "").split("_")[-1]
+# ---------- MAIN LOGIC ----------
+def run_sync():
+    today_utc = datetime.utcnow().date()
+    last_available_day = today_utc - timedelta(days=1)
+
+    print(f"\n🚀 Синхронизация. Данные доступны до {last_available_day}")
+
+    for gas_name, (dataset, band) in gases.items():
+        print(f"\n🧪 Газ: {gas_name}")
+
+        gas_folder = os.path.join(SAVE_PATH, gas_name)
+        os.makedirs(gas_folder, exist_ok=True)
+
+        last_date = get_last_downloaded_date(gas_name)
+
+        if last_date:
+            current_date = last_date + timedelta(days=1)
+            print(f"  ▶ Продолжаем с {current_date}")
+        else:
+            current_date = last_available_day
+            print("  ▶ Нет файлов — скачиваем последний день")
+
+        while current_date <= last_available_day:
+            next_date = current_date + timedelta(days=1)
+            date_str = current_date.strftime("%Y-%m-%d")
+            outfile = os.path.join(gas_folder, f"{gas_name}_{date_str}.tif")
+
+            if os.path.exists(outfile):
+                current_date = next_date
+                continue
+
+            print(f"  ⬇ {date_str}")
+
+            col = (
+                ee.ImageCollection(dataset)
+                .select(band)
+                .filterDate(str(current_date), str(next_date))
+            )
+
+            if col.size().getInfo() == 0:
+                print("    ⚠ Нет данных")
+                current_date = next_date
+                continue
+
+            img = col.mean().clip(region)
+
+            try:
+                url = img.getDownloadURL({
+                    "scale": 7000,
+                    "region": region,
+                    "format": "GEO_TIFF",
+                })
+                r = requests.get(url, timeout=120)
+                r.raise_for_status()
+            except Exception as e:
+                print(f"    ❌ Ошибка загрузки: {e}")
+                return
+
+            with open(outfile, "wb") as f:
+                f.write(r.content)
+
+            print("    ✔ Сохранено")
+            current_date = next_date
 
 
-def to_dd_mm_yyyy(date_str: str) -> str:
-    return datetime.strptime(date_str, "%Y-%m-%d").strftime("%d-%m-%Y")
+# ---------- AUTO MODE ----------
+if __name__ == "__main__":
+    print(f"🟢 Автоскачивание запущено "
+          f"(RUN_AT={RUN_AT}, RUN_TZ={RUN_TZ})")
 
-
-def compute_mean_for_gas(gas: str, values: np.ndarray) -> float:
-    finite = values[np.isfinite(values)]
-    finite = finite[(finite >= 0) & (finite < 1e20)]
-
-    if finite.size == 0:
-        return 0.0
-
-    raw_mean = float(np.nanmean(finite))
-
-    if gas == "CH4":
-        return round(raw_mean / 1000.0, 3)
-
-    if gas in ("NO2", "SO2", "HCHO"):
-        return round(raw_mean * 1e6, 3)
-
-    return round(raw_mean, 3)
-
-
-# -------------------- ANALYTICS API --------------------
-@app.get("/api/air_monitoring_points")
-async def air_monitoring_points(gas: str, region: int):
-    gas = gas.upper()
-
-    if gas not in GAS_UNITS:
-        return JSONResponse({"error": "Unknown gas"}, 400)
-
-    if not os.path.exists(GEOJSON_PATH):
-        return JSONResponse({"error": "GeoJSON file not found"}, 404)
-
-    with open(GEOJSON_PATH, "r", encoding="utf-8") as f:
-        gj = json.load(f)
-
-    feature = next(
-        (
-            feat
-            for feat in gj["features"]
-            if str(feat["properties"].get("region_soato")) == str(region)
-        ),
-        None,
-    )
-
-    if not feature:
-        return JSONResponse({"error": "Region not found"}, 404)
-
-    region_polygon = shape(feature["geometry"])
-
-    tiffs = list_tiffs(gas)
-    if not tiffs:
-        return JSONResponse({"error": "No TIFF files"}, 404)
-
-    results = []
-
-    for tif_path in tiffs:
-        fname = os.path.basename(tif_path)
-        period = to_dd_mm_yyyy(extract_period_from_filename(fname))
-
-        da = rioxarray.open_rasterio(tif_path).squeeze()
-        da = da.rio.write_crs("EPSG:4326", inplace=False)
-
-        clipped = da.rio.clip([region_polygon.__geo_interface__], drop=False)
-
-        mean_value = compute_mean_for_gas(gas, clipped.values.flatten())
-
-        results.append(
-            {
-                "gas": gas,
-                "mean": mean_value,
-                "unit": GAS_UNITS[gas],
-                "period": period,
-            }
-        )
-
-    return results
-
-
-# -------------------- UPLOAD API --------------------
-@app.post("/api/upload_tiff")
-async def upload_tiff(file: UploadFile = File(...)):
-    if not file.filename or not file.filename.endswith(".tif"):
-        raise HTTPException(400, "Only .tif files allowed")
-
-    try:
-        gas = extract_gas_from_filename(file.filename)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-
-    gas_dir = get_gas_dir(gas)
-    os.makedirs(gas_dir, exist_ok=True)
-
-    save_path = os.path.join(gas_dir, file.filename)
-
-    with open(save_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    return {"status": "ok", "gas": gas, "saved_to": save_path}
+    # бесконечный планировщик
+    while True:
+        sleep_until_scheduled_time()
+        try:
+            run_sync()
+        except Exception as e:
+            print(f"🔥 Критическая ошибка: {e}")

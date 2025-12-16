@@ -6,6 +6,8 @@ services:
     container_name: sentinel5p-api
     restart: always
     env_file: .env
+    environment:
+      - PYTHONUNBUFFERED=1
     ports:
       - "8120:8000"
     volumes:
@@ -17,6 +19,9 @@ services:
 
       # LOGS
       - ./logs:/app/logs
+
+      # ✅ Earth Engine credentials (read-only)
+      - /home/temur/.config/earthengine:/root/.config/earthengine:ro
     networks:
       - sentinel-net
 
@@ -28,10 +33,13 @@ services:
     container_name: sentinel5p-gases
     restart: always
     env_file: .env
-    command: python download_all.py
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python -u download_all.py
     volumes:
       - /home/temur/Documents/Work/goo/data:/data
       - ./logs:/app/logs
+      - /home/temur/.config/earthengine:/root/.config/earthengine:ro
     networks:
       - sentinel-net
 
@@ -43,10 +51,13 @@ services:
     container_name: sentinel5p-temperature
     restart: always
     env_file: .env
-    command: python temp.py
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python -u temp.py
     volumes:
       - /home/temur/Documents/Work/goo/data:/data
       - ./logs:/app/logs
+      - /home/temur/.config/earthengine:/root/.config/earthengine:ro
     networks:
       - sentinel-net
 
@@ -58,10 +69,13 @@ services:
     container_name: sentinel5p-wind
     restart: always
     env_file: .env
-    command: python wind.py
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python -u wind.py
     volumes:
       - /home/temur/Documents/Work/goo/data:/data
       - ./logs:/app/logs
+      - /home/temur/.config/earthengine:/root/.config/earthengine:ro
     networks:
       - sentinel-net
 
