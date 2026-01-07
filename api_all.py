@@ -130,7 +130,7 @@ class DownloadRequest(BaseModel):
     gas: Union[str, List[str]] = Field(..., description="Газ или список газов. Можно строкой: 'NO2,CO'")
     date: str = Field(..., description="YYYY-MM-DD")
     region: int = Field(..., description="parent_cod (int)")
-    count_gase: int = Field(30, description="7 / 15 / 30 (сколько дней для графика)")
+    count_date: int = Field(30, description="7 / 15 / 30 (сколько дней для графика)")
 
 
 def _cleanup_dir(path: str):
@@ -233,8 +233,8 @@ def download_docx(req: DownloadRequest):
 
     _validate_date(req.date)
 
-    if req.count_gase not in ALLOWED_DAYS:
-        raise HTTPException(400, f"count_gase must be one of {sorted(ALLOWED_DAYS)}")
+    if req.count_date not in ALLOWED_DAYS:
+        raise HTTPException(400, f"count_date must be one of {sorted(ALLOWED_DAYS)}")
 
     # Проверка ENV путей для DOCX
     if not SAVE_PATH:
@@ -256,14 +256,14 @@ def download_docx(req: DownloadRequest):
         raise HTTPException(500, f"TUMAN_SHP not found: {TUMAN_SHP}")
 
     tmpdir = tempfile.mkdtemp(prefix="airrep_api_")
-    out_docx = os.path.join(tmpdir, f"report_{req.region}_{req.date}_{req.count_gase}d.docx")
+    out_docx = os.path.join(tmpdir, f"report_{req.region}_{req.date}_{req.count_date}d.docx")
 
     try:
         build_docx(
             gases=gases,
             date_str=req.date,
             parent_cod=int(req.region),
-            count_gase=int(req.count_gase),
+            count_date=int(req.count_date),
             rasters_root=SAVE_PATH,
             mintaqa_shp=MINTAQA_SHP,
             tuman_shp=TUMAN_SHP,
@@ -281,7 +281,7 @@ def download_docx(req: DownloadRequest):
         _cleanup_dir(tmpdir)
         raise HTTPException(500, "DOCX was not created")
 
-    filename = f"air_report_{req.region}_{req.date}_{req.count_gase}d.docx"
+    filename = f"air_report_{req.region}_{req.date}_{req.count_date}d.docx"
     return FileResponse(
         path=out_docx,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",

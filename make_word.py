@@ -74,7 +74,7 @@ def build_docx(
     gases,
     date_str: str,
     parent_cod: int,
-    count_gase: int,
+    count_date: int,
     *,
     rasters_root: str,
     mintaqa_shp: str,
@@ -94,8 +94,8 @@ def build_docx(
     if not gases:
         raise ValueError("gases is empty")
 
-    if count_gase not in (7, 15, 30):
-        count_gase = 30
+    if count_date not in (7, 15, 30):
+        count_date = 30
 
     gas_db = _load_json(text_json_path)
 
@@ -130,7 +130,7 @@ def build_docx(
                 rasters_root=rasters_root,
                 mintaqa_shp=mintaqa_shp,         # <-- тот же shp
                 out_dir=tmpdir,
-                lookback_days=count_gase,
+                lookback_days=count_date,
             )
             region_name = grafik.get("region_name") or str(parent_cod)
 
@@ -144,7 +144,7 @@ def build_docx(
             _p_left(doc, "Respublika kesimida:")
             _add_picture_center(doc, screens["mintaqa"])
 
-            _p_left(doc, f"So‘nggi {count_gase} kun bo‘yicha {gas} o‘rtacha qiymat grafigi:")
+            _p_left(doc, f"So‘nggi {count_date} kun bo‘yicha {gas} o‘rtacha qiymat grafigi:")
             _add_picture_center(doc, grafik["png"])
 
             doc.add_page_break()
@@ -170,7 +170,7 @@ if __name__ == "__main__":
     GASES = [ "CH4", "CO", "O3", "SO2"]
     DATE = "2025-01-20"
     PARENT_COD = 1706
-    COUNT_GASE = 7
+    COUNT_DATE = 7
 
     RASTERS_ROOT = "/home/temur/Documents/Work/goo/data"
     MINTAQA_SHP = "/home/temur/Documents/Work/goo/polygons/Mintaqa.shp"
@@ -180,7 +180,7 @@ if __name__ == "__main__":
     OUT_DOCX = "/home/temur/Documents/Work/goo/word/report.docx"
 
     build_docx(
-        GASES, DATE, PARENT_COD, COUNT_GASE,
+        GASES, DATE, PARENT_COD, COUNT_DATE,
         rasters_root=RASTERS_ROOT,
         mintaqa_shp=MINTAQA_SHP,
         tuman_shp=TUMAN_SHP,
