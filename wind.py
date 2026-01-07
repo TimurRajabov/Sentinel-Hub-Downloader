@@ -1,15 +1,12 @@
 import os
+import random
 import time
 from datetime import date, datetime, timedelta
 
 import ee
 import requests
 from dotenv import load_dotenv
-
-try:
-    from zoneinfo import ZoneInfo  # Python 3.9+
-except ImportError:
-    raise RuntimeError("Нужен Python 3.9+ (zoneinfo)")
+from requests.exceptions import RequestException, Timeout
 
 
 load_dotenv()
@@ -23,11 +20,18 @@ TOP_LAT = float(os.getenv("TOP_LAT"))
 
 SAVE_PATH = os.getenv("SAVE_PATH", "/data")
 
-RUN_AT = os.getenv("RUN_AT", "00:00")
-RUN_TZ = os.getenv("RUN_TZ", "UTC")
-
 START_DATE = os.getenv("START_DATE")
 END_DATE = os.getenv("END_DATE")
+
+MAX_RETRIES = int(os.getenv("MAX_RETRIES", "6"))
+BASE_SLEEP = float(os.getenv("BASE_SLEEP", "2.0"))
+MAX_SLEEP = float(os.getenv("MAX_SLEEP", "120.0"))
+HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "300"))
+
+SKIP_DAY_ON_FAIL = os.getenv("SKIP_DAY_ON_FAIL", "1").strip().lower() in ("1", "true", "yes", "y", "on")
+
+COOLDOWN_HOURS_ON_FAILURE = float(os.getenv("COOLDOWN_HOURS_ON_FAILURE", "5"))
+SLEEP_BETWEEN_PASSES_SEC = int(os.getenv("SLEEP_BETWEEN_PASSES_SEC", "300"))
 
 
 def parse_day(s: str | None) -> date | None:
@@ -43,150 +47,177 @@ if START_DAY is None or END_DAY is None:
     raise RuntimeError("В .env нужно задать START_DATE и END_DATE в формате YYYY-MM-DD")
 if START_DAY > END_DAY:
     raise RuntimeError("START_DATE не может быть больше END_DATE")
+if not PROJECT_ID:
+    raise RuntimeError("PROJECT_ID is not set in .env")
 
 
-OUTPUT_DIR = os.path.join(SAVE_PATH, "wind")
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-COLLECTION_ID = "ECMWF/ERA5/HOURLY"
-BANDS = ["u_component_of_wind_10m", "v_component_of_wind_10m"]
-SCALE_METERS = 27827
+COLLECTION_ID = "ECMWF/ERA5_LAND/HOURLY"
+BAND = "temperature_2m"
+SCALE_METERS = 11132  # ~0.1°
 CRS = "EPSG:4326"
+
+OUTPUT_DIR = os.path.join(SAVE_PATH, "temperature")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 ee.Initialize(project=PROJECT_ID)
 region_geom = ee.Geometry.Rectangle([LEFT_LON, BOTTOM_LAT, RIGHT_LON, TOP_LAT])
 
 
-def sleep_until_scheduled_time():
-    tz = ZoneInfo(RUN_TZ)
-    now = datetime.now(tz)
-
-    hour, minute = map(int, RUN_AT.split(":"))
-    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    if target <= now:
-        target += timedelta(days=1)
-
-    seconds = (target - now).total_seconds()
-    print(f"\n😴 Ждём до {target.strftime('%Y-%m-%d %H:%M %Z')} ({int(seconds)} сек)")
-    time.sleep(seconds)
+def _backoff_sleep(attempt: int) -> None:
+    sleep_s = min(MAX_SLEEP, BASE_SLEEP * (2 ** (attempt - 1))) + random.random()
+    print(f"    ⏳ backoff {sleep_s:.1f} сек...")
+    time.sleep(sleep_s)
 
 
-def get_last_downloaded_day():
+def download_with_retries(img: ee.Image, outfile: str) -> None:
+    params = {"scale": SCALE_METERS, "region": region_geom, "crs": CRS, "format": "GEO_TIFF"}
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            url = img.getDownloadURL(params)
+            with requests.get(url, stream=True, timeout=HTTP_TIMEOUT) as r:
+                if r.status_code in (429, 500, 502, 503, 504):
+                    raise RequestException(f"{r.status_code} {r.reason} for url: {url}")
+                r.raise_for_status()
+
+                tmp = outfile + ".part"
+                with open(tmp, "wb") as f:
+                    for chunk in r.iter_content(1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
+                os.replace(tmp, outfile)
+            return
+
+        except (RequestException, Timeout) as e:
+            print(f"    ❌ сеть/сервис (попытка {attempt}/{MAX_RETRIES}): {e}")
+            if attempt < MAX_RETRIES:
+                _backoff_sleep(attempt)
+                continue
+            raise
+
+        except Exception as e:
+            print(f"    ❌ ошибка (попытка {attempt}/{MAX_RETRIES}): {e}")
+            if attempt < MAX_RETRIES:
+                _backoff_sleep(attempt)
+                continue
+            raise
+
+
+def get_last_downloaded_day() -> date | None:
     dates = set()
     for f in os.listdir(OUTPUT_DIR):
+        
         try:
-            d = f.split("_")[0]
+            d = f.split("_")[0] 
             dates.add(datetime.strptime(d, "%Y%m%d").date())
         except Exception:
             pass
     return max(dates) if dates else None
 
 
-def build_image_and_mapping(day_py: date):
-    day_iso = day_py.isoformat()
-    date_str = day_py.strftime("%Y%m%d")
-
-    start = ee.Date(day_iso)
+def list_images_for_day(day_py: date):
+    start = ee.Date(day_py.isoformat())
     end = start.advance(1, "day")
 
-    era5 = (
+    col = (
         ee.ImageCollection(COLLECTION_ID)
         .filterDate(start, end)
         .filterBounds(region_geom)
-        .select(BANDS)
+        .select([BAND])
         .sort("system:time_start")
     )
 
-    count = era5.size().getInfo()
+    count = col.size().getInfo()
     if count == 0:
-        print(f"  ⚠ Нет данных ERA5 за {day_iso}")
-        return None, None
+        return None, 0
 
-    img = era5.toBands()
-    orig_band_names = img.bandNames().getInfo()
-
-    mapping = []
-    hour = 0
-    seen_u = False
-
-    for b in orig_band_names:
-        if "u_component_of_wind_10m" in b:
-            new_name = f"{date_str}_U_{hour:02d}"
-            mapping.append((b, new_name))
-            seen_u = True
-        elif "v_component_of_wind_10m" in b:
-            new_name = f"{date_str}_V_{hour:02d}"
-            mapping.append((b, new_name))
-            if seen_u:
-                hour += 1
-                seen_u = False
-
-    print(f"  Каналов найдено: {len(mapping)} (ожидается 48)")
-    return img, mapping
+    return col.toList(count), count
 
 
-def download_era5_for_day(day_py: date):
-    print(f"\n=== 🌬 Ветер {day_py} (UTC-данные) ===")
+def download_temp_for_day(day_py: date) -> bool:
+    print(f"\n=== 🌡 TEMP {day_py} (UTC) ===")
 
-    img, mapping = build_image_and_mapping(day_py)
-    if img is None:
-        return
+    images_list, count = list_images_for_day(day_py)
+    if images_list is None or count == 0:
+        print(f"  ⚠ Нет данных ERA5-Land за {day_py.isoformat()}")
+        return False
 
-    for old_band, new_band in mapping:
-        out_path = os.path.join(OUTPUT_DIR, f"{new_band}.tif")
+    print(f"  Найдено {count} снимков (обычно ~24).")
+
+    had_failures = False
+    date_str = day_py.strftime("%Y%m%d")
+
+    for idx in range(count):
+        img = ee.Image(images_list.get(idx)).select(BAND)
+
+        hour_str = ee.Date(img.get("system:time_start")).format("HH").getInfo()
+
+        tif_name = f"{date_str}_{hour_str}_ERA_temp.tif"
+        out_path = os.path.join(OUTPUT_DIR, tif_name)
 
         if os.path.exists(out_path):
             continue
 
-        print(f"  ⬇ {new_band}.tif")
+        print(f"  ⬇ {tif_name.replace('.tif','')}")
 
-        single_img = img.select([old_band]).rename(new_band)
+        img_c = img.subtract(273.15).rename("temp")
 
         try:
-            url = single_img.getDownloadURL(
-                {"scale": SCALE_METERS, "region": region_geom, "crs": CRS, "format": "GEO_TIFF"}
-            )
-            resp = requests.get(url, stream=True, timeout=120)
-            resp.raise_for_status()
+            download_with_retries(img_c, out_path)
+            print("    ✔ OK")
         except Exception as e:
-            print(f"    ❌ Ошибка: {e}")
-            return
+            had_failures = True
+            print(f"    ❌ Не удалось скачать {tif_name}: {e}")
 
-        with open(out_path, "wb") as f:
-            for chunk in resp.iter_content(8192):
-                if chunk:
-                    f.write(chunk)
-
-        print("    ✔ OK")
+    return had_failures
 
 
-def run_sync():
-    print(f"\n🚀 Синхронизация ветра в диапазоне: {START_DAY} .. {END_DAY}")
+def run_sync() -> bool:
+    had_failures = False
+    print(f"\n🚀 Синхронизация TEMP: {START_DAY} .. {END_DAY} | SAVE_PATH={SAVE_PATH}")
 
     last_day = get_last_downloaded_day()
-
     if last_day:
         day = max(last_day + timedelta(days=1), START_DAY)
         print(f"▶ Продолжаем с {day} (последний файл был {last_day})")
     else:
         day = START_DAY
-        print(f"▶ Нет файлов — стартуем с START_DATE={START_DAY}")
+        print(f"▶ Нет файлов — стартуем с {START_DAY}")
 
     if day > END_DAY:
         print("✅ Уже всё скачано в заданном диапазоне")
-        return
+        return False
 
     while day <= END_DAY:
-        download_era5_for_day(day)
+        day_failed = download_temp_for_day(day)
+
+        if day_failed:
+            had_failures = True
+            if SKIP_DAY_ON_FAIL:
+                print("  ⚠ Были ошибки за день, продолжаем следующий (SKIP_DAY_ON_FAIL=1).")
+            else:
+                print("  🛑 Были ошибки за день, останавливаемся (SKIP_DAY_ON_FAIL=0).")
+                break
+
         day += timedelta(days=1)
+
+    return had_failures
 
 
 if __name__ == "__main__":
-    print(f"🟢 Автоскачивание ветра (RUN_AT={RUN_AT}, RUN_TZ={RUN_TZ}) диапазон={START_DAY}..{END_DAY}")
+    print(f"🟢 Вечный режим TEMP: диапазон={START_DAY}..{END_DAY}")
 
     while True:
-        sleep_until_scheduled_time()
         try:
-            run_sync()
+            had_failures = run_sync()
         except Exception as e:
-            print(f"🔥 Критическая ошибка: {e}")
+            print(f"🔥 Критическая ошибка в run_sync(): {e}")
+            had_failures = True
+
+        if had_failures:
+            sleep_s = int(COOLDOWN_HOURS_ON_FAILURE * 3600)
+            print(f"🛌 Были ошибки. Повторим через {COOLDOWN_HOURS_ON_FAILURE} часов ({sleep_s} сек)")
+            time.sleep(sleep_s)
+        else:
+            print(f"✅ Проход завершён. Пауза {SLEEP_BETWEEN_PASSES_SEC} сек")
+            time.sleep(SLEEP_BETWEEN_PASSES_SEC)

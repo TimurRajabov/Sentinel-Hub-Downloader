@@ -1,0 +1,37 @@
+{
+  "CO": {
+    "display_uz": "Uglerod oksidi (CO)",
+    "unit": "mol/m²",
+    "text_uz": "Uglerod oksidi (CO) bo‘yicha ma’lumotlar Sentinel-5P sun’iy yo‘ldoshidan olinadi. Ushbu ma’lumotlar har bir birlik maydon ustidagi havoda CO miqdorini ko‘rsatadi ({unit}).\n\nCO — rangsiz va xavfli gaz bo‘lib, u qonda kislorod tashilishini qiyinlashtiradi. CO ning yuqori darajalari ko‘pincha avtomobil chiqindi gazlari, sanoat, isitish tizimlari hamda yong‘inlar bilan bog‘liq bo‘ladi.\n\nCO ning o‘rtacha qiymati oddiy usulda hisoblanadi: tanlangan hudud ichidagi barcha to‘g‘ri (yaroqli) piksel qiymatlari yig‘iladi va ularning soniga bo‘linadi. Bu CO bo‘yicha havoning ifloslanish darajasi haqida umumiy tasavvur beradi."
+  },
+  "CH4": {
+    "display_uz": "Metan (CH₄)",
+    "unit": "ppm",
+    "text_uz": "Metan (CH₄) bo‘yicha ma’lumotlar Sentinel-5P sun’iy yo‘ldoshidan olinadi. Ushbu ma’lumotlar birlik maydon ustidagi havoda metan miqdorini ko‘rsatadi ({unit}).\n\nMetan — rangsiz va hidsiz, kuchli issiqxona gazi. U global isishni sezilarli kuchaytiradi hamda yerga yaqin ozon shakllanishiga ta’sir qiladi. CH₄ ning asosiy manbalari: neft-gaz sohasidagi sizib chiqishlar, chorvachilik, botqoqliklar, chiqindi poligonlari va yong‘inlar.\n\nCH₄ ning o‘rtacha qiymati odatiy o‘rtacha hisoblash orqali aniqlanadi: hudud ichidagi barcha yaroqli qiymatlar olinadi, noto‘g‘ri qiymatlar chiqarib tashlanadi, so‘ng yig‘indi piksel soniga bo‘linadi."
+  },
+  "NO2": {
+    "display_uz": "Azot dioksidi (NO₂)",
+    "unit": "mol/km²",
+    "text_uz": "Azot dioksidi (NO₂) bo‘yicha ma’lumotlar Sentinel-5P sun’iy yo‘ldoshidan olinadi. Ular yer sathi ustidagi atmosfera ustunida NO₂ miqdorini ko‘rsatadi ({unit}).\n\nNO₂ — jigarrang tusli, zaharli gaz bo‘lib, nafas yo‘llarini bezovta qiladi va havo sifatini yomonlashtiradi. NO₂ ning eng yuqori darajalari odatda avtomobil transporti, sanoat va yoqilg‘ini yoqish jarayonlari bilan bog‘liq.\n\nNO₂ ning o‘rtacha qiymati tanlangan hududdagi barcha yaroqli piksel qiymatlari bo‘yicha oddiy o‘rtacha hisoblash yo‘li bilan aniqlanadi."
+  },
+  "SO2": {
+    "display_uz": "Oltingugurt dioksidi (SO₂)",
+    "unit": "mol/km²",
+    "text_uz": "Oltingugurt dioksidi (SO₂) bo‘yicha ma’lumotlar Sentinel-5P sun’iy yo‘ldoshidan olinadi. Ushbu ma’lumotlar atmosfera ustunida SO₂ miqdorini aks ettiradi ({unit}).\n\nSO₂ — o‘tkir hidli va bezovta qiluvchi gaz bo‘lib, bo‘g‘ilish alomatlarini keltirib chiqarishi hamda kislotali yomg‘irlar shakllanishida ishtirok etishi mumkin. SO₂ ning yuqori darajalari ko‘pincha sanoat, ko‘mir yoqilishi, neftni qayta ishlash va vulqon faolligi bilan bog‘liq.\n\nUshbu gaz sanoat korxonalari chiqindilari va ayrim tabiiy hodisalarning muhim indikatori hisoblanadi."
+  },
+  "HCHO": {
+    "display_uz": "Formaldegid (HCHO)",
+    "unit": "mol/km²",
+    "text_uz": "Formaldegid (HCHO) bo‘yicha ma’lumotlar Sentinel-5P sun’iy yo‘ldoshidan olinadi. Ular atmosfera ustunidagi HCHO miqdorini ko‘rsatadi ({unit}).\n\nFormaldegid — uchuvchan organik birikma bo‘lib, tutun (smog) hosil bo‘lishiga ta’sir qiluvchi moddalardan biridir. U ko‘z va nafas yo‘llarini bezovta qilishi, shuningdek, potensial kanserogen sifatida baholanishi mumkin. HCHO manbalari: avtomobil chiqindilari, yong‘inlar, kimyoviy ishlab chiqarish va o‘simliklarning tabiiy ajralmalari.\n\nHCHO ning o‘rtacha qiymati tanlangan hudud ichidagi barcha yaroqli qiymatlar bo‘yicha oddiy arifmetik o‘rtacha usulda hisoblanadi."
+  },
+  "AERAI": {
+    "display_uz": "Aerozol indeksi (AERAI)",
+    "unit": "unitless",
+    "text_uz": "Absorbing Aerosol Index (AERAI) — Sentinel-5P sun’iy yo‘ldosh ma’lumotlari bo‘lib, atmosferadagi yutuvchi aerozollar miqdorini baholaydi ({unit}).\n\nAERAI ultrabinafsha nurlanishni yutuvchi zarrachalarni qayd etadi: cho‘l changi, yong‘in tutuni, sanoat tutuni hamda vulqon kuli.\n\nAERAI ning o‘rtacha qiymati tanlangan hudud ichidagi barcha “toza” (yaroqli) piksellar bo‘yicha o‘rtacha qilish orqali hisoblanadi."
+  },
+  "O3": {
+    "display_uz": "Ozon (O₃)",
+    "unit": "mol/m²",
+    "text_uz": "Ozon (O₃) bo‘yicha ma’lumotlar Sentinel-5P sun’iy yo‘ldoshidan olinadi. Ular atmosfera ustunidagi umumiy ozon miqdorini ko‘rsatadi ({unit}).\n\nOzon ikki xil rol o‘ynaydi: stratosferada u Yer yuzini ultrabinafsha nurlanishdan himoya qiladi, troposferada esa zararli ifloslantiruvchi bo‘lib, smog hosil bo‘lishiga olib kelishi mumkin.\n\nO₃ ning o‘rtacha qiymati tanlangan hudud ichidagi barcha yaroqli piksellar bo‘yicha o‘rtacha qilish orqali hisoblanadi."
+  }
+}

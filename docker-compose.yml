@@ -2,92 +2,77 @@ version: "3.9"
 
 services:
   api:
-    build: .
+    image: thehokim/sentinel5p:latest
     container_name: sentinel5p-api
     restart: always
     env_file: .env
     environment:
       - PYTHONUNBUFFERED=1
     ports:
-      - "8120:8000"
+      - "8121:8000"
+    command: sh -lc "uvicorn api_all:app --host 0.0.0.0 --port 8000"
     volumes:
-      # DATA (общая для всех сервисов)
-      - /home/temur/Documents/Work/goo/data:/data
-
-      # GEOJSON
-      - /home/temur/Documents/Work/goo/geojson/uzbekistan_regions_backup.geojson:/geojson/uzbekistan_regions_backup.geojson
-
-      # LOGS
-      - ./logs:/app/logs
-
-      # ✅ Earth Engine credentials (read-only)
-      - /home/temur/.config/earthengine:/root/.config/earthengine:ro
+      - /opt/sentinel5p/data:/data
+      - /opt/sentinel5p/geojson:/geojson:ro
+      - /opt/sentinel5p/logs:/app/logs
+      - /opt/sentinel5p/earthengine_credentials.json:/root/.config/earthengine/credentials:ro
     networks:
       - sentinel-net
 
-  # ===============================
-  #   AUTO DOWNLOAD — GASES
-  # ===============================
   sentinel-gases:
-    build: .
+    image: thehokim/sentinel5p:latest
     container_name: sentinel5p-gases
     restart: always
     env_file: .env
     environment:
       - PYTHONUNBUFFERED=1
-    command: python -u download_all.py
+    command: sh -lc "mkdir -p /root/.config/earthengine && python -u download_all.py"
     volumes:
-      - /home/temur/Documents/Work/goo/data:/data
-      - ./logs:/app/logs
-      - /home/temur/.config/earthengine:/root/.config/earthengine:ro
+      - /opt/sentinel5p/data:/data
+      - /opt/sentinel5p/logs:/app/logs
+      - /opt/sentinel5p/geojson:/geojson:ro
+      - /opt/sentinel5p/earthengine_credentials.json:/root/.config/earthengine/credentials:ro
     networks:
       - sentinel-net
 
-  # ===============================
-  #   AUTO DOWNLOAD — TEMPERATURE
-  # ===============================
   sentinel-temperature:
-    build: .
+    image: thehokim/sentinel5p:latest
     container_name: sentinel5p-temperature
     restart: always
     env_file: .env
     environment:
       - PYTHONUNBUFFERED=1
-    command: python -u temp.py
+    command: sh -lc "mkdir -p /root/.config/earthengine && python -u temp.py"
     volumes:
-      - /home/temur/Documents/Work/goo/data:/data
-      - ./logs:/app/logs
-      - /home/temur/.config/earthengine:/root/.config/earthengine:ro
+      - /opt/sentinel5p/data:/data
+      - /opt/sentinel5p/logs:/app/logs
+      - /opt/sentinel5p/geojson:/geojson:ro
+      - /opt/sentinel5p/earthengine_credentials.json:/root/.config/earthengine/credentials:ro
     networks:
       - sentinel-net
 
-  # ===============================
-  #   AUTO DOWNLOAD — WIND
-  # ===============================
   sentinel-wind:
-    build: .
+    image: thehokim/sentinel5p:latest
     container_name: sentinel5p-wind
     restart: always
     env_file: .env
     environment:
       - PYTHONUNBUFFERED=1
-    command: python -u wind.py
+    command: sh -lc "mkdir -p /root/.config/earthengine && python -u wind.py"
     volumes:
-      - /home/temur/Documents/Work/goo/data:/data
-      - ./logs:/app/logs
-      - /home/temur/.config/earthengine:/root/.config/earthengine:ro
+      - /opt/sentinel5p/data:/data
+      - /opt/sentinel5p/logs:/app/logs
+      - /opt/sentinel5p/geojson:/geojson:ro
+      - /opt/sentinel5p/earthengine_credentials.json:/root/.config/earthengine/credentials:ro
     networks:
       - sentinel-net
 
-  # ===============================
-  #   SONARQUBE
-  # ===============================
   sonarqube:
     image: sonarqube:community
     container_name: sonarqube
     restart: always
     ports:
-      - "9101:9000"
+      - "9104:9000"
     environment:
       - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
     volumes:
@@ -106,7 +91,7 @@ services:
       SONAR_HOST_URL: http://sonarqube:9000
       SONAR_TOKEN: ${SONAR_TOKEN}
     volumes:
-      - ./:/usr/src
+      - /opt/sentinel5p:/usr/src
     networks:
       - sentinel-net
     entrypoint: ["sleep", "infinity"]

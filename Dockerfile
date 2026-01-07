@@ -1,6 +1,6 @@
 FROM python:3.10-slim
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin \
     libgdal-dev \
     libproj-dev \
@@ -15,8 +15,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# ✅ Ставим python bindings GDAL (osgeo) в /usr/local site-packages
+RUN GDAL_VER="$(gdal-config --version)" && \
+    pip install --no-cache-dir "GDAL==${GDAL_VER}"
+
 COPY . .
 
 EXPOSE 8000
-
 CMD ["uvicorn", "api_all:app", "--host", "0.0.0.0", "--port", "8000"]

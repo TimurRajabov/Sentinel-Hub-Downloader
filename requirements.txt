@@ -17,3 +17,7 @@ earthengine-api
 pytest
 pytest-cov
 coverage
+
+
+matplotlib
+python-docx
