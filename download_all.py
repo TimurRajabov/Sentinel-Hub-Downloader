@@ -21,18 +21,13 @@ TOP_LAT = float(os.getenv("TOP_LAT"))
 
 SAVE_PATH = os.getenv("SAVE_PATH", "/data")
 
-START_DATE = os.getenv("START_DATE")  # YYYY-MM-DD
-END_DATE = os.getenv("END_DATE")      # YYYY-MM-DD
+START_DATE = os.getenv("START_DATE") 
+END_DATE = os.getenv("END_DATE")      
 
-# Ретраи для EE/HTTP
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "6"))
 BASE_SLEEP = float(os.getenv("BASE_SLEEP", "2.0"))
 MAX_SLEEP = float(os.getenv("MAX_SLEEP", "120.0"))
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "300"))
-
-# Поведение при провале дня после всех ретраев:
-# 1 = пропускать день и идти дальше
-# 0 = остановить текущий газ на этом дне (повторим позже)
 SKIP_DAY_ON_FAIL = os.getenv("SKIP_DAY_ON_FAIL", "1") == "1"
 
 # Вечный режим

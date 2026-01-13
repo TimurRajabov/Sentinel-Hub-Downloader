@@ -20,10 +20,10 @@ osr.UseExceptions()
 
 GAS_UNITS = {
     "CH4": "ppm",
-    "CO": "mol/km²",
-    "NO2": "mol/km²",
-    "SO2": "mol/km²",
-    "HCHO": "mol/km²",
+    "CO": "mol/m²",
+    "NO2": "mol/m²",
+    "SO2": "mol/m²",
+    "HCHO": "mol/m²",
     "O3": "mol/m²",
     "AERAI": "unitless",
 }
