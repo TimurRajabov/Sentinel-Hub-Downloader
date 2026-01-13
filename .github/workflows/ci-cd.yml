@@ -1,0 +1,195 @@
+name: CI/CD
+
+on:
+  push:
+    branches: ["master"]
+
+jobs:
+  lint:
+    runs-on: [self-hosted, linux, x64]
+
+    steps:
+      - name: Clean workspace
+        run: rm -rf ${{ github.workspace }}/*
+
+      - uses: actions/checkout@v3
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install linting dependencies
+        run: |
+          pip install flake8 isort black mypy bandit
+
+      # ВАЖНО: в CI лучше проверять, а не форматировать файлы
+      - name: Run isort (check)
+        run: isort . --check-only
+
+      - name: Run black (check)
+        run: black . --check
+
+      - name: Run flake8
+        run: flake8 . --exclude=venv,.venv,__pycache__,logs,data,output,word,Products_Raw,Products_Processed,alembic
+
+      # Если mypy.ini нет — либо создай, либо убери шаг
+      - name: Run mypy
+        run: |
+          if [ -f mypy.ini ]; then
+            mypy . --config-file mypy.ini
+          else
+            echo "mypy.ini not found, skipping mypy"
+          fi
+
+      - name: Run bandit
+        run: |
+          bandit -r . \
+            --exclude ./venv,./.venv,./__pycache__,./tests,./logs,./data,./output,./word \
+            --skip B101,B601 \
+            --format screen
+
+      - name: Trivy Security Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+
+
+  test:
+    runs-on: [self-hosted, linux, x64]
+    needs: lint
+
+    steps:
+      - name: Clean workspace
+        run: rm -rf ${{ github.workspace }}/*
+
+      - uses: actions/checkout@v3
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Set PYTHONPATH
+        run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov httpx
+
+      - name: Run tests
+        env:
+          ENV: ci
+        run: |
+          pytest tests/ -v --cov=. --cov-report=xml --cov-report=term
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+
+  sonarqube:
+    runs-on: [self-hosted, linux, x64]
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Download coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+
+      - name: SonarQube Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST: ${{ secrets.SONAR_HOST }}
+        run: |
+          export SONAR_SCANNER_OPTS="-Xmx2g"
+          sonar-scanner \
+            -Dsonar.host.url=${SONAR_HOST} \
+            -Dsonar.login=${SONAR_TOKEN}
+
+
+  build_and_push:
+    runs-on: [self-hosted, linux, x64]
+    needs: sonarqube
+
+    steps:
+      - name: Clean workspace
+        run: rm -rf ${{ github.workspace }}/*
+
+      - uses: actions/checkout@v3
+
+      - name: Docker Login
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASS }}
+
+      - name: Build and Push Image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USER }}/sentinel5p-api:${{ github.sha }} \
+                       -t ${{ secrets.DOCKER_USER }}/sentinel5p-api:latest .
+          docker push ${{ secrets.DOCKER_USER }}/sentinel5p-api:${{ github.sha }}
+          docker push ${{ secrets.DOCKER_USER }}/sentinel5p-api:latest
+
+
+  deploy:
+    runs-on: [self-hosted, linux, x64]
+    needs: build_and_push
+
+    steps:
+      - name: Clean workspace
+        run: rm -rf ${{ github.workspace }}/*
+
+      - uses: actions/checkout@v3
+
+      - name: Prepare deployment
+        run: |
+          mkdir -p /opt/sentinel5p
+
+          # положим compose и env на сервер
+          cp -f docker-compose.yml /opt/sentinel5p/
+
+          # .env создаём (ты можешь расширить переменными)
+          cat > /opt/sentinel5p/.env << EOF
+          # ENV for sentinel5p project
+          EOF
+
+      # ВАЖНО: у тебя compose скорее всего build: .
+      # pull тут бессмысленен. Поэтому делаем up --build
+      - name: Deploy with Docker Compose
+        run: |
+          cd /opt/sentinel5p
+          docker compose down || true
+          docker compose up -d --build
+
+          echo "=== Container Status ==="
+          docker compose ps
+
+          docker image prune -af --filter "until=24h"
+
+      - name: Health Check
+        run: |
+          echo "Waiting for services to start..."
+          sleep 20
+
+          # Проверь порт: если у тебя в compose "8121:8000" — оставь 8121
+          if curl -f http://localhost:8121/docs > /dev/null 2>&1; then
+            echo "Backend is healthy!"
+          else
+            echo "Backend not ready, showing logs:"
+            docker logs sentinel5p-api --tail 80 || true
+            exit 1
+          fi
