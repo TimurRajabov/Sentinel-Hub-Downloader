@@ -8,7 +8,6 @@ import requests
 from dotenv import load_dotenv
 from requests.exceptions import RequestException, Timeout
 
-
 # ---------- LOAD ENV ----------
 load_dotenv()
 
@@ -21,8 +20,8 @@ TOP_LAT = float(os.getenv("TOP_LAT"))
 
 SAVE_PATH = os.getenv("SAVE_PATH", "/data")
 
-START_DATE = os.getenv("START_DATE") 
-END_DATE = os.getenv("END_DATE")      
+START_DATE = os.getenv("START_DATE")
+END_DATE = os.getenv("END_DATE")
 
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "6"))
 BASE_SLEEP = float(os.getenv("BASE_SLEEP", "2.0"))
@@ -193,7 +192,9 @@ def run_sync() -> bool:
                     current_date = next_date
                     continue
                 else:
-                    print("    🛑 Останавливаем этот газ на текущей дате (повторим позже)")
+                    print(
+                        "    🛑 Останавливаем этот газ на текущей дате (повторим позже)"
+                    )
                     break
 
     return had_failures
@@ -211,7 +212,9 @@ if __name__ == "__main__":
 
         if had_failures:
             sleep_s = int(COOLDOWN_HOURS_ON_FAILURE * 3600)
-            print(f"🛌 Были ошибки. Повторим через {COOLDOWN_HOURS_ON_FAILURE} часов ({sleep_s} сек)")
+            print(
+                f"🛌 Были ошибки. Повторим через {COOLDOWN_HOURS_ON_FAILURE} часов ({sleep_s} сек)"
+            )
             time.sleep(sleep_s)
         else:
             print(f"✅ Проход завершён. Пауза {SLEEP_BETWEEN_PASSES_SEC} сек")

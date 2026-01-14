@@ -4,15 +4,20 @@ on:
   push:
     branches: ["main"]
 
+permissions:
+  contents: write
+
 jobs:
   lint:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, Linux, X64]
 
     steps:
       - name: Clean workspace
         run: rm -rf ${{ github.workspace }}/*
 
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Install Python
         uses: actions/setup-python@v4
@@ -21,20 +26,32 @@ jobs:
           cache: "pip"
 
       - name: Install linting dependencies
+        run: pip install flake8 isort black mypy bandit
+
+      # 1) Авто-фикс импорта/формата
+      - name: Auto-fix imports (isort)
+        run: isort .
+
+      - name: Auto-format code (black)
+        run: black .
+
+      # 2) Если есть изменения — коммитим и пушим
+      - name: Commit & push formatting changes (if any)
         run: |
-          pip install flake8 isort black mypy bandit
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "chore: auto-format (isort/black)"
+            git push origin HEAD:main
+          else
+            echo "No formatting changes"
+          fi
 
-      # ВАЖНО: в CI лучше проверять, а не форматировать файлы
-      - name: Run isort (check)
-        run: isort . --check-only
-
-      - name: Run black (check)
-        run: black . --check
-
+      # 3) После авто-формата можно проверять линтеры
       - name: Run flake8
         run: flake8 . --exclude=venv,.venv,__pycache__,logs,data,output,word,Products_Raw,Products_Processed,alembic
 
-      # Если mypy.ini нет — либо создай, либо убери шаг
       - name: Run mypy
         run: |
           if [ -f mypy.ini ]; then
@@ -60,7 +77,7 @@ jobs:
 
 
   test:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, Linux, X64]
     needs: lint
 
     steps:
@@ -86,8 +103,7 @@ jobs:
       - name: Run tests
         env:
           ENV: ci
-        run: |
-          pytest tests/ -v --cov=. --cov-report=xml --cov-report=term
+        run: pytest tests/ -v --cov=. --cov-report=xml --cov-report=term
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4
@@ -97,7 +113,7 @@ jobs:
 
 
   sonarqube:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, Linux, X64]
     needs: test
 
     steps:
@@ -122,7 +138,7 @@ jobs:
 
 
   build_and_push:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, Linux, X64]
     needs: sonarqube
 
     steps:
@@ -146,7 +162,7 @@ jobs:
 
 
   deploy:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, Linux, X64]
     needs: build_and_push
 
     steps:
@@ -158,38 +174,25 @@ jobs:
       - name: Prepare deployment
         run: |
           mkdir -p /opt/sentinel5p
-
-          # положим compose и env на сервер
           cp -f docker-compose.yml /opt/sentinel5p/
-
-          # .env создаём (ты можешь расширить переменными)
           cat > /opt/sentinel5p/.env << EOF
           # ENV for sentinel5p project
           EOF
 
-      # ВАЖНО: у тебя compose скорее всего build: .
-      # pull тут бессмысленен. Поэтому делаем up --build
       - name: Deploy with Docker Compose
         run: |
           cd /opt/sentinel5p
           docker compose down || true
           docker compose up -d --build
-
-          echo "=== Container Status ==="
           docker compose ps
-
           docker image prune -af --filter "until=24h"
 
       - name: Health Check
         run: |
-          echo "Waiting for services to start..."
           sleep 20
-
-          # Проверь порт: если у тебя в compose "8121:8000" — оставь 8121
           if curl -f http://localhost:8121/docs > /dev/null 2>&1; then
             echo "Backend is healthy!"
           else
-            echo "Backend not ready, showing logs:"
             docker logs sentinel5p-api --tail 80 || true
             exit 1
           fi

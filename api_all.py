@@ -6,7 +6,7 @@ import re
 import shutil
 import tempfile
 from datetime import datetime
-from typing import List, Union, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import rioxarray
@@ -42,9 +42,9 @@ def options_handler(full_path: str):
 # =======================
 #    ENV / PATHS
 # =======================
-SAVE_PATH = os.getenv("SAVE_PATH")          # Sentinel-5P root (например /data)
-OUTPUT_ROOT = os.getenv("OUTPUT_ROOT")      # ADS root (например /output)
-GEOJSON_PATH = os.getenv("GEOJSON_PATH")    # регионы по soato
+SAVE_PATH = os.getenv("SAVE_PATH")  # Sentinel-5P root (например /data)
+OUTPUT_ROOT = os.getenv("OUTPUT_ROOT")  # ADS root (например /output)
+GEOJSON_PATH = os.getenv("GEOJSON_PATH")  # регионы по soato
 GEOJSON_PATH_1 = os.getenv("GEOJSON_PATH_1")  # Узбекистан полигон (legenda)
 
 if not SAVE_PATH:
@@ -158,6 +158,7 @@ def _reproject_polygon_to_raster_crs(region_polygon, raster_crs):
         return region_polygon
 
     from pyproj import Transformer
+
     transformer = Transformer.from_crs("EPSG:4326", raster_crs_str, always_xy=True)
     return shp_transform(lambda x, y: transformer.transform(x, y), region_polygon)
 
@@ -170,7 +171,9 @@ def clip_and_get_values(tif_path: str, region_polygon) -> np.ndarray:
 
     poly_in_raster_crs = _reproject_polygon_to_raster_crs(region_polygon, da.rio.crs)
 
-    clipped = da.rio.clip([poly_in_raster_crs.__geo_interface__], drop=True, all_touched=False)
+    clipped = da.rio.clip(
+        [poly_in_raster_crs.__geo_interface__], drop=True, all_touched=False
+    )
     arr = clipped.values
 
     if np.ma.isMaskedArray(arr):
@@ -182,7 +185,9 @@ def clip_and_get_values(tif_path: str, region_polygon) -> np.ndarray:
     return np.asarray(vals, dtype="float64").ravel()
 
 
-def compute_mean_raw(values: np.ndarray, *, round_ndigits: Optional[int] = None) -> Optional[float]:
+def compute_mean_raw(
+    values: np.ndarray, *, round_ndigits: Optional[int] = None
+) -> Optional[float]:
     if values.size == 0:
         return None
 
@@ -213,7 +218,6 @@ def compute_stats_raw(values: np.ndarray) -> dict:
         "min": float(np.nanmin(v)),
         "max": float(np.nanmax(v)),
         "mean": float(np.nanmean(v)),
-
     }
 
 
@@ -232,7 +236,9 @@ def apply_scale_stats(stats: dict, gas: str, effective_source: str) -> dict:
     return out
 
 
-def resolve_effective_source_and_root(gas: str, requested_source: str) -> Tuple[str, str]:
+def resolve_effective_source_and_root(
+    gas: str, requested_source: str
+) -> Tuple[str, str]:
     gas = gas.upper().strip()
     requested_source = requested_source.upper().strip()
 
@@ -243,7 +249,9 @@ def resolve_effective_source_and_root(gas: str, requested_source: str) -> Tuple[
         return "S5", SAVE_PATH
 
     if not OUTPUT_ROOT:
-        raise HTTPException(500, "OUTPUT_ROOT is not set in environment (required for ADS)")
+        raise HTTPException(
+            500, "OUTPUT_ROOT is not set in environment (required for ADS)"
+        )
     return "ADS", OUTPUT_ROOT
 
 
@@ -300,11 +308,13 @@ def load_polygon_from_geojson(path: str):
 
     return shape(gj)
 
+
 class DownloadRequest(BaseModel):
     gas: Union[str, List[str]] = Field(..., description="Газ или список газов")
     date: str = Field(..., description="YYYY-MM-DD")
     region: int = Field(..., description="parent_cod (int)")
     count_date: int = Field(30, description="7 / 15 / 30 (сколько дней для графика)")
+
 
 @app.get("/api/air_monitoring_points")
 async def air_monitoring_points(
@@ -316,7 +326,9 @@ async def air_monitoring_points(
     source = source.upper().strip()
 
     if gas not in GAS_UNITS:
-        return JSONResponse({"error": f"Unknown gas. Allowed: {sorted(GAS_UNITS.keys())}"}, 400)
+        return JSONResponse(
+            {"error": f"Unknown gas. Allowed: {sorted(GAS_UNITS.keys())}"}, 400
+        )
 
     if source not in {"S5", "ADS"}:
         return JSONResponse({"error": "source must be S5 or ADS"}, 400)
@@ -349,7 +361,10 @@ async def air_monitoring_points(
     tiffs = list_tiffs(gas, root)
     if not tiffs:
         return JSONResponse(
-            {"error": f"No TIFF files for gas {gas} in {get_gas_dir(gas, root)}", "source": effective_source},
+            {
+                "error": f"No TIFF files for gas {gas} in {get_gas_dir(gas, root)}",
+                "source": effective_source,
+            },
             404,
         )
 
@@ -357,10 +372,16 @@ async def air_monitoring_points(
 
     for tif_path in tiffs:
         # ПРАВКА: достаём дату из имени нормально (ADS тоже)
-        period_raw = extract_date_from_filename_any(tif_path) or extract_period_from_filename(os.path.basename(tif_path))
+        period_raw = extract_date_from_filename_any(
+            tif_path
+        ) or extract_period_from_filename(os.path.basename(tif_path))
 
         try:
-            period = to_dd_mm_yyyy(period_raw) if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(period_raw)) else str(period_raw)
+            period = (
+                to_dd_mm_yyyy(period_raw)
+                if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(period_raw))
+                else str(period_raw)
+            )
         except Exception:
             period = str(period_raw)
 
@@ -371,7 +392,11 @@ async def air_monitoring_points(
             # масштаб для ADS (только mean)
             if effective_source == "ADS":
                 k = ADS_SCALE.get(gas)
-                mean_value = (mean_raw * k) if (mean_raw is not None and k is not None) else mean_raw
+                mean_value = (
+                    (mean_raw * k)
+                    if (mean_raw is not None and k is not None)
+                    else mean_raw
+                )
             else:
                 mean_value = mean_raw
 
@@ -413,7 +438,9 @@ def legenda(
     source = source.upper().strip()
 
     if gas not in ALLOWED_GASES:
-        raise HTTPException(400, f"Unknown gas. Allowed: {', '.join(sorted(ALLOWED_GASES))}")
+        raise HTTPException(
+            400, f"Unknown gas. Allowed: {', '.join(sorted(ALLOWED_GASES))}"
+        )
 
     if source not in {"S5", "ADS"}:
         raise HTTPException(400, "source must be S5 or ADS")
@@ -522,7 +549,9 @@ def download_docx(req: DownloadRequest):
         raise HTTPException(500, f"TUMAN_SHP not found: {TUMAN_SHP}")
 
     tmpdir = tempfile.mkdtemp(prefix="airrep_api_")
-    out_docx = os.path.join(tmpdir, f"report_{req.region}_{req.date}_{req.count_date}d.docx")
+    out_docx = os.path.join(
+        tmpdir, f"report_{req.region}_{req.date}_{req.count_date}d.docx"
+    )
 
     try:
         build_docx(

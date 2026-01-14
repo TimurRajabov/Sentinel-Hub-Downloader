@@ -1,18 +1,17 @@
 # -*- coding: utf-8 -*-
+import json
 import os
 import re
-import json
 from datetime import datetime, timedelta
-from typing import List, Tuple, Dict
+from typing import Dict, List, Tuple
 
+import matplotlib
 import numpy as np
 import rioxarray
 
-import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-
+import matplotlib.pyplot as plt
 from osgeo import ogr, osr
 
 ogr.UseExceptions()
@@ -35,7 +34,9 @@ def _parse_date_from_filename(path: str) -> datetime:
     d = s.split("_")[-1]
     for fmt in ("%Y-%m-%d", "%Y%m%d", "%d-%m-%Y"):
         try:
-            return datetime.strptime(d, fmt).replace(hour=0, minute=0, second=0, microsecond=0)
+            return datetime.strptime(d, fmt).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
         except ValueError:
             pass
     raise ValueError(f"Can't parse date from filename: {path}")
@@ -69,7 +70,9 @@ def _get_feature_and_name(lyr, parent_cod: int):
     lyr.ResetReading()
     if not feat:
         raise RuntimeError(f"parent_cod={parent_cod} не найден в shp")
-    name = feat.GetField("region_nam") or feat.GetField("region_name") or str(parent_cod)
+    name = (
+        feat.GetField("region_nam") or feat.GetField("region_name") or str(parent_cod)
+    )
     return feat, str(name)
 
 
@@ -78,7 +81,9 @@ def _srs_axis(srs: osr.SpatialReference) -> osr.SpatialReference:
     return srs
 
 
-def _geom_to_raster_geojson(geom: ogr.Geometry, vec_srs: osr.SpatialReference, ras_crs) -> dict:
+def _geom_to_raster_geojson(
+    geom: ogr.Geometry, vec_srs: osr.SpatialReference, ras_crs
+) -> dict:
     ras_srs = osr.SpatialReference()
     if ras_crs is None:
         ras_srs.ImportFromEPSG(4326)
@@ -130,8 +135,14 @@ def _dedupe_by_date(selected: List[Tuple[datetime, str]]) -> List[Tuple[datetime
     return sorted(by_day.items(), key=lambda x: x[0])
 
 
-def _build_chart_png(gas: str, region_name: str, year: int, unit: str,
-                     points: List[Tuple[datetime, float]], lookback_days: int) -> bytes:
+def _build_chart_png(
+    gas: str,
+    region_name: str,
+    year: int,
+    unit: str,
+    points: List[Tuple[datetime, float]],
+    lookback_days: int,
+) -> bytes:
     x = [dt for dt, _ in points]
     y = [v for _, v in points]
 
@@ -159,6 +170,7 @@ def _build_chart_png(gas: str, region_name: str, year: int, unit: str,
     fig.autofmt_xdate(rotation=0, ha="center")
 
     import io
+
     buf = io.BytesIO()
     fig.tight_layout()
     fig.savefig(buf, format="png")
@@ -166,9 +178,15 @@ def _build_chart_png(gas: str, region_name: str, year: int, unit: str,
     return buf.getvalue()
 
 
-def make_grafik(gas: str, date_str: str, parent_cod: int,
-                rasters_root: str, mintaqa_shp: str, out_dir: str,
-                lookback_days: int = 30) -> dict:
+def make_grafik(
+    gas: str,
+    date_str: str,
+    parent_cod: int,
+    rasters_root: str,
+    mintaqa_shp: str,
+    out_dir: str,
+    lookback_days: int = 30,
+) -> dict:
     """
     Делает {gas}_{DATE}_grafik.png
 
@@ -183,7 +201,9 @@ def make_grafik(gas: str, date_str: str, parent_cod: int,
     if lookback_days not in (7, 15, 30):
         lookback_days = 30
 
-    end_dt = datetime.strptime(date_str, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
+    end_dt = datetime.strptime(date_str, "%Y-%m-%d").replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
     start_dt = end_dt - timedelta(days=int(lookback_days) - 1)
 
     year = end_dt.year
@@ -217,7 +237,9 @@ def make_grafik(gas: str, date_str: str, parent_cod: int,
         selected.append((dt, p))
 
     if not selected:
-        raise RuntimeError(f"Нет tif в диапазоне {start_dt:%Y-%m-%d}..{end_dt:%Y-%m-%d} для {gas}")
+        raise RuntimeError(
+            f"Нет tif в диапазоне {start_dt:%Y-%m-%d}..{end_dt:%Y-%m-%d} для {gas}"
+        )
 
     # FIX: убираем дубли по датам (иначе точки могут повторяться)
     selected = _dedupe_by_date(selected)
@@ -235,7 +257,7 @@ def make_grafik(gas: str, date_str: str, parent_cod: int,
         year=year,
         unit=GAS_UNITS.get(gas, "unit"),
         points=points,
-        lookback_days=lookback_days
+        lookback_days=lookback_days,
     )
 
     out_path = os.path.join(out_dir, f"{gas}_{date_str}_grafik.png")

@@ -1,16 +1,15 @@
 # -*- coding: utf-8 -*-
-import os
 import json
+import os
 import tempfile
 from datetime import datetime
 
 from docx import Document
-from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Inches, Pt
 
 from screen import make_screens
 from word_grafik import make_grafik
-
 
 # ====== CONFIG (лучше вынести в .env, но можно так) ======
 PIC_W = Inches(6.5)
@@ -18,8 +17,18 @@ FONT_NAME = "Times New Roman"
 FONT_SIZE = 14
 
 UZ_MONTHS = {
-    1: "yanvar", 2: "fevral", 3: "mart", 4: "aprel", 5: "may", 6: "iyun",
-    7: "iyul", 8: "avgust", 9: "sentabr", 10: "oktabr", 11: "noyabr", 12: "dekabr"
+    1: "yanvar",
+    2: "fevral",
+    3: "mart",
+    4: "aprel",
+    5: "may",
+    6: "iyun",
+    7: "iyul",
+    8: "avgust",
+    9: "sentabr",
+    10: "oktabr",
+    11: "noyabr",
+    12: "dekabr",
 }
 
 
@@ -117,7 +126,7 @@ def build_docx(
                 date_str=date_str,
                 parent_cod=parent_cod,
                 rasters_root=rasters_root,
-                vector_path=mintaqa_shp,         # <-- один и тот же shp
+                vector_path=mintaqa_shp,  # <-- один и тот же shp
                 base_vector_path=tuman_shp,
                 out_dir=tmpdir,
             )
@@ -128,7 +137,7 @@ def build_docx(
                 date_str=date_str,
                 parent_cod=parent_cod,
                 rasters_root=rasters_root,
-                mintaqa_shp=mintaqa_shp,         # <-- тот же shp
+                mintaqa_shp=mintaqa_shp,  # <-- тот же shp
                 out_dir=tmpdir,
                 lookback_days=count_date,
             )
@@ -138,13 +147,15 @@ def build_docx(
             _p_center_bold(
                 doc,
                 f"{idx}. Respublika va {region_name} kesimida {_uz_date(date_str)} holatiga ko‘ra "
-                f"{gas_name} yuqori bo‘lgan hududlar."
+                f"{gas_name} yuqori bo‘lgan hududlar.",
             )
 
             _p_left(doc, "Respublika kesimida:")
             _add_picture_center(doc, screens["mintaqa"])
 
-            _p_left(doc, f"So‘nggi {count_date} kun bo‘yicha {gas} o‘rtacha qiymat grafigi:")
+            _p_left(
+                doc, f"So‘nggi {count_date} kun bo‘yicha {gas} o‘rtacha qiymat grafigi:"
+            )
             _add_picture_center(doc, grafik["png"])
 
             doc.add_page_break()
@@ -162,6 +173,7 @@ def build_docx(
         doc.save(out_docx)
 
     return out_docx
+
 
 """
 # ====== local test ======

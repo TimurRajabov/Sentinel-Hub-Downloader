@@ -55,7 +55,11 @@ def test_download_era5_for_day_writes_files(fake_env_and_ee, tmp_path, monkeypat
     fake_img = type(
         "Img",
         (),
-        {"select": lambda self, x: self, "rename": lambda self, n: self, "getDownloadURL": lambda self, p: "http://example.com"},
+        {
+            "select": lambda self, x: self,
+            "rename": lambda self, n: self,
+            "getDownloadURL": lambda self, p: "http://example.com",
+        },
     )()
     monkeypatch.setattr(
         m,
@@ -64,7 +68,9 @@ def test_download_era5_for_day_writes_files(fake_env_and_ee, tmp_path, monkeypat
     )
 
     # Подменяем requests.get
-    monkeypatch.setattr(m.requests, "get", lambda *_a, **_k: _FakeResponse(200, [b"a", b"b"]))
+    monkeypatch.setattr(
+        m.requests, "get", lambda *_a, **_k: _FakeResponse(200, [b"a", b"b"])
+    )
 
     # Запуск на один день
     m.download_era5_for_day(date(2025, 1, 1))

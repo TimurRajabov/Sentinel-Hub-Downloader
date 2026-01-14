@@ -8,7 +8,6 @@ import requests
 from dotenv import load_dotenv
 from requests.exceptions import RequestException, Timeout
 
-
 load_dotenv()
 
 PROJECT_ID = os.getenv("PROJECT_ID")
@@ -28,7 +27,13 @@ BASE_SLEEP = float(os.getenv("BASE_SLEEP", "2.0"))
 MAX_SLEEP = float(os.getenv("MAX_SLEEP", "120.0"))
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "300"))
 
-SKIP_DAY_ON_FAIL = os.getenv("SKIP_DAY_ON_FAIL", "1").strip().lower() in ("1", "true", "yes", "y", "on")
+SKIP_DAY_ON_FAIL = os.getenv("SKIP_DAY_ON_FAIL", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "y",
+    "on",
+)
 
 COOLDOWN_HOURS_ON_FAILURE = float(os.getenv("COOLDOWN_HOURS_ON_FAILURE", "5"))
 SLEEP_BETWEEN_PASSES_SEC = int(os.getenv("SLEEP_BETWEEN_PASSES_SEC", "300"))
@@ -70,7 +75,12 @@ def _backoff_sleep(attempt: int) -> None:
 
 
 def download_with_retries(img: ee.Image, outfile: str) -> None:
-    params = {"scale": SCALE_METERS, "region": region_geom, "crs": CRS, "format": "GEO_TIFF"}
+    params = {
+        "scale": SCALE_METERS,
+        "region": region_geom,
+        "crs": CRS,
+        "format": "GEO_TIFF",
+    }
 
     for attempt in range(1, MAX_RETRIES + 1):
         try:
@@ -106,9 +116,9 @@ def download_with_retries(img: ee.Image, outfile: str) -> None:
 def get_last_downloaded_day() -> date | None:
     dates = set()
     for f in os.listdir(OUTPUT_DIR):
-        
+
         try:
-            d = f.split("_")[0] 
+            d = f.split("_")[0]
             dates.add(datetime.strptime(d, "%Y%m%d").date())
         except Exception:
             pass
@@ -194,7 +204,9 @@ def run_sync() -> bool:
         if day_failed:
             had_failures = True
             if SKIP_DAY_ON_FAIL:
-                print("  ⚠ Были ошибки за день, продолжаем следующий (SKIP_DAY_ON_FAIL=1).")
+                print(
+                    "  ⚠ Были ошибки за день, продолжаем следующий (SKIP_DAY_ON_FAIL=1)."
+                )
             else:
                 print("  🛑 Были ошибки за день, останавливаемся (SKIP_DAY_ON_FAIL=0).")
                 break
@@ -216,7 +228,9 @@ if __name__ == "__main__":
 
         if had_failures:
             sleep_s = int(COOLDOWN_HOURS_ON_FAILURE * 3600)
-            print(f"🛌 Были ошибки. Повторим через {COOLDOWN_HOURS_ON_FAILURE} часов ({sleep_s} сек)")
+            print(
+                f"🛌 Были ошибки. Повторим через {COOLDOWN_HOURS_ON_FAILURE} часов ({sleep_s} сек)"
+            )
             time.sleep(sleep_s)
         else:
             print(f"✅ Проход завершён. Пауза {SLEEP_BETWEEN_PASSES_SEC} сек")

@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 import os
 from datetime import datetime
-import numpy as np
+
 import matplotlib
+import numpy as np
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, Normalize
@@ -37,9 +39,22 @@ SEL_COLOR = "#FFFFFF"
 SEL_W = 2.0
 LEGEND_TICKS = 3
 
+
 def _spectrum_cmap():
-    stops = ["#800080", "#4b0082", "#0000ff", "#00ffff", "#00ff00", "#ffff00", "#ffa500", "#ff0000"]
-    cols = [(int(s[1:3], 16)/255, int(s[3:5], 16)/255, int(s[5:7], 16)/255) for s in stops]
+    stops = [
+        "#800080",
+        "#4b0082",
+        "#0000ff",
+        "#00ffff",
+        "#00ff00",
+        "#ffff00",
+        "#ffa500",
+        "#ff0000",
+    ]
+    cols = [
+        (int(s[1:3], 16) / 255, int(s[3:5], 16) / 255, int(s[5:7], 16) / 255)
+        for s in stops
+    ]
     return LinearSegmentedColormap.from_list("spectrum", cols, N=256)
 
 
@@ -51,11 +66,11 @@ def _percent_clip(arr, pmin, pmax, bins):
     hist, edges = np.histogram(v, bins=bins, range=(lo, hi))
     cdf = np.cumsum(hist).astype(np.float64)
     total = cdf[-1]
-    i0 = int(np.searchsorted(cdf, total * (pmin/100.0), side="left"))
-    i1 = int(np.searchsorted(cdf, total * (pmax/100.0), side="left"))
-    i0 = int(np.clip(i0, 0, len(edges)-2))
-    i1 = int(np.clip(i1, 0, len(edges)-2))
-    return float(edges[i0]), float(edges[i1+1])
+    i0 = int(np.searchsorted(cdf, total * (pmin / 100.0), side="left"))
+    i1 = int(np.searchsorted(cdf, total * (pmax / 100.0), side="left"))
+    i0 = int(np.clip(i0, 0, len(edges) - 2))
+    i1 = int(np.clip(i1, 0, len(edges) - 2))
+    return float(edges[i0]), float(edges[i1 + 1])
 
 
 def _srs_axis(srs, fallback_epsg=None):
@@ -109,7 +124,8 @@ def _plot_geom(ax, geom, inv_gt, color, lw, z):
         xs, ys = [], []
         for (x, y, *_) in ring.GetPoints():
             c, r = gdal.ApplyGeoTransform(inv_gt, x, y)
-            xs.append(c); ys.append(r)
+            xs.append(c)
+            ys.append(r)
         ax.plot(xs, ys, color=color, linewidth=lw, zorder=z)
 
     t = geom.GetGeometryType()
@@ -124,7 +140,11 @@ def _plot_geom(ax, geom, inv_gt, color, lw, z):
 
 
 def _add_legend(fig, ax, cmap, vmin_raw, vmax_raw, title, scale=1.0):
-    ticks = np.linspace(vmin_raw, vmax_raw, LEGEND_TICKS) if LEGEND_TICKS > 1 else np.array([(vmin_raw+vmax_raw)/2])
+    ticks = (
+        np.linspace(vmin_raw, vmax_raw, LEGEND_TICKS)
+        if LEGEND_TICKS > 1
+        else np.array([(vmin_raw + vmax_raw) / 2])
+    )
 
     def fmt(x):
         return f"{(float(x)*scale):.6g}"
@@ -148,9 +168,15 @@ def _add_legend(fig, ax, cmap, vmin_raw, vmax_raw, title, scale=1.0):
     cax.tick_params(axis="x", labelsize=9, length=0)
 
 
-def make_screens(gas: str, date_str: str, parent_cod: int,
-                 rasters_root: str, vector_path: str, base_vector_path: str,
-                 out_dir: str) -> dict:
+def make_screens(
+    gas: str,
+    date_str: str,
+    parent_cod: int,
+    rasters_root: str,
+    vector_path: str,
+    base_vector_path: str,
+    out_dir: str,
+) -> dict:
     """
     Returns:
       {
@@ -200,19 +226,27 @@ def make_screens(gas: str, date_str: str, parent_cod: int,
         vds = ogr.Open(vector_path)
         lyr = vds.GetLayer(0)
         vec_srs = _srs_axis(lyr.GetSpatialRef(), fallback_epsg=3857)
-        ct = osr.CoordinateTransformation(vec_srs, ras_srs) if not vec_srs.IsSame(ras_srs) else None
+        ct = (
+            osr.CoordinateTransformation(vec_srs, ras_srs)
+            if not vec_srs.IsSame(ras_srs)
+            else None
+        )
 
         g_sel = None
         if mode == "feature":
             feat = _get_feature_by_parent_cod(lyr, parent_cod)
             g_sel = feat.GetGeometryRef().Clone()
-            if ct: g_sel.Transform(ct)
+            if ct:
+                g_sel.Transform(ct)
             xmin2, xmax2, ymin2, ymax2 = g_sel.GetEnvelope()
         else:
             xmin2, xmax2, ymin2, ymax2 = _layer_extent_in_raster_srs(lyr, ct)
 
-        padx, pady = (xmax2-xmin2)*ZOOM_PAD, (ymax2-ymin2)*ZOOM_PAD
-        xmin2 -= padx; xmax2 += padx; ymin2 -= pady; ymax2 += pady
+        padx, pady = (xmax2 - xmin2) * ZOOM_PAD, (ymax2 - ymin2) * ZOOM_PAD
+        xmin2 -= padx
+        xmax2 += padx
+        ymin2 -= pady
+        ymax2 += pady
 
         x0, y0 = gdal.ApplyGeoTransform(inv_gt, xmin2, ymin2)
         x1, y1 = gdal.ApplyGeoTransform(inv_gt, xmax2, ymax2)
@@ -223,17 +257,22 @@ def make_screens(gas: str, date_str: str, parent_cod: int,
         bds = ogr.Open(base_vector_path)
         blyr = bds.GetLayer(0)
         b_srs = _srs_axis(blyr.GetSpatialRef(), fallback_epsg=3857)
-        bct = osr.CoordinateTransformation(b_srs, ras_srs) if not b_srs.IsSame(ras_srs) else None
+        bct = (
+            osr.CoordinateTransformation(b_srs, ras_srs)
+            if not b_srs.IsSame(ras_srs)
+            else None
+        )
         for bf in blyr:
             bg = bf.GetGeometryRef()
             if not bg:
                 continue
             bg = bg.Clone()
-            if bct: bg.Transform(bct)
+            if bct:
+                bg.Transform(bct)
             _plot_geom(ax, bg, inv_gt, BASE_COLOR, base_w, z=3)
 
         if highlight and g_sel is not None:
-            _plot_geom(ax, g_sel, inv_gt, SEL_COLOR, SEL_W*1.6, z=8)
+            _plot_geom(ax, g_sel, inv_gt, SEL_COLOR, SEL_W * 1.6, z=8)
             _plot_geom(ax, g_sel, inv_gt, SEL_COLOR, SEL_W, z=9)
 
         ax.axis("off")

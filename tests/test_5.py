@@ -98,7 +98,13 @@ def test_run_sync_already_done_branch(fake_env_and_ee, monkeypatch):
 
     # если случайно вызовется — тест должен упасть
     if hasattr(m, "download_era5_for_day"):
-        monkeypatch.setattr(m, "download_era5_for_day", lambda _d: (_ for _ in ()).throw(AssertionError("download_era5_for_day should not be called")))
+        monkeypatch.setattr(
+            m,
+            "download_era5_for_day",
+            lambda _d: (_ for _ in ()).throw(
+                AssertionError("download_era5_for_day should not be called")
+            ),
+        )
 
     if hasattr(m, "run_sync"):
         m.run_sync()
