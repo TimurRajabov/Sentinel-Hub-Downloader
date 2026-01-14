@@ -25,7 +25,7 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
-          # cache: "pip"
+          # cache: "pip"  # на self-hosted часто таймаутит restore
 
       - name: Install linting dependencies
         run: pip install flake8 isort black mypy bandit
@@ -91,20 +91,17 @@ jobs:
           python-version: "3.11"
           # cache: "pip"
 
-      - name: Install system deps (GDAL / osgeo)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gdal-bin libgdal-dev python3-gdal
-
+      # ⚠️ GDAL/osgeo тут НЕ ставим (нет sudo). Тесты с GDAL пропускаем.
       - name: Set PYTHONPATH
         run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-asyncio pytest-cov httpx
 
-      - name: Run tests
+      - name: Run tests (skip gdal tests)
         env:
           ENV: ci
           LEFT_LON: "0"
@@ -113,7 +110,8 @@ jobs:
           BOTTOM_LAT: "0"
           START_DATE: "2025-01-01"
           END_DATE: "2025-01-02"
-        run: pytest tests/ -v --cov=. --cov-report=xml --cov-report=term
+        run: |
+          pytest tests/ -v -m "not gdal" --cov=. --cov-report=xml --cov-report=term
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4
