@@ -13,5 +13,8 @@ exclude =
     geojson,
     polygons
 
+    [flake8]
 per-file-ignores =
+    api_all.py: F841
     tests/*.py: F401
+
