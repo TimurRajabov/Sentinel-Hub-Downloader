@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   lint:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: self-hosted
 
     steps:
       - name: Clean workspace
@@ -28,14 +28,14 @@ jobs:
       - name: Install linting dependencies
         run: pip install flake8 isort black mypy bandit
 
-      # 1) Авто-фикс импорта/формата
+      # --- автоформат ---
       - name: Auto-fix imports (isort)
         run: isort .
 
       - name: Auto-format code (black)
         run: black .
 
-      # 2) Если есть изменения — коммитим и пушим
+      # --- коммит форматирования ---
       - name: Commit & push formatting changes (if any)
         run: |
           if [ -n "$(git status --porcelain)" ]; then
@@ -43,16 +43,16 @@ jobs:
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add -A
             git commit -m "chore: auto-format (isort/black)"
-            git push origin HEAD:main
+            git push origin main
           else
             echo "No formatting changes"
           fi
 
-      # 3) После авто-формата можно проверять линтеры
+      # --- линтеры ---
       - name: Run flake8
-        run: flake8 . --exclude=venv,.venv,__pycache__,logs,data,output,word,Products_Raw,Products_Processed,alembic
+        run: flake8 .
 
-      - name: Run mypy
+      - name: Run mypy (optional)
         run: |
           if [ -f mypy.ini ]; then
             mypy . --config-file mypy.ini
@@ -77,7 +77,7 @@ jobs:
 
 
   test:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: self-hosted
     needs: lint
 
     steps:
@@ -113,7 +113,7 @@ jobs:
 
 
   sonarqube:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: self-hosted
     needs: test
 
     steps:
@@ -138,7 +138,7 @@ jobs:
 
 
   build_and_push:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: self-hosted
     needs: sonarqube
 
     steps:
@@ -162,7 +162,7 @@ jobs:
 
 
   deploy:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: self-hosted
     needs: build_and_push
 
     steps:
