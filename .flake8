@@ -13,8 +13,9 @@ exclude =
     geojson,
     polygons
 
-    [flake8]
 per-file-ignores =
     api_all.py: F841
     tests/*.py: F401
-
+    screen.py: E402,F811
+    wind.py: E231
+    word_grafik.py: E402,F841
