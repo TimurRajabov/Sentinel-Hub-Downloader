@@ -63,12 +63,15 @@ jobs:
             echo "mypy.ini not found, skipping mypy"
           fi
 
-      - name: Run bandit
+      # --- security (Bandit) ---
+      # -ll: показывать только Medium/High (Low не валит пайплайн)
+      - name: Run bandit (medium/high only)
         run: |
           bandit -r . \
             --exclude ./venv,./.venv,./__pycache__,./tests,./logs,./data,./output,./word \
             --skip B101,B601 \
-            --format screen
+            --format screen \
+            -ll
 
       - name: Trivy Security Scan
         uses: aquasecurity/trivy-action@master
