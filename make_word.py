@@ -8,10 +8,8 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt
 
-from screen import make_screens
 from word_grafik import make_grafik
 
-# ====== CONFIG (лучше вынести в .env, но можно так) ======
 PIC_W = Inches(6.5)
 FONT_NAME = "Times New Roman"
 FONT_SIZE = 14
@@ -97,8 +95,6 @@ def build_docx(
       2) grafik
       3) rayon_screen (регион + соседние)
     """
-
-    # нормализуем вход
     gases = [g.strip().upper() for g in gases if str(g).strip()]
     if not gases:
         raise ValueError("gases is empty")
@@ -120,13 +116,15 @@ def build_docx(
             unit = info.get("unit", "")
             text_tpl = info.get("text_uz", "")
 
-            # 1) Screens (2 png)
+            # 1) Screens (2 png) - lazy import, чтобы тесты не падали на import osgeo
+            from screen import make_screens  # type: ignore
+
             screens = make_screens(
                 gas=gas,
                 date_str=date_str,
                 parent_cod=parent_cod,
                 rasters_root=rasters_root,
-                vector_path=mintaqa_shp,  # <-- один и тот же shp
+                vector_path=mintaqa_shp,
                 base_vector_path=tuman_shp,
                 out_dir=tmpdir,
             )
@@ -137,13 +135,12 @@ def build_docx(
                 date_str=date_str,
                 parent_cod=parent_cod,
                 rasters_root=rasters_root,
-                mintaqa_shp=mintaqa_shp,  # <-- тот же shp
+                mintaqa_shp=mintaqa_shp,
                 out_dir=tmpdir,
                 lookback_days=count_date,
             )
             region_name = grafik.get("region_name") or str(parent_cod)
 
-            # ===== PAGE 1: республика png -> график =====
             _p_center_bold(
                 doc,
                 f"{idx}. Respublika va {region_name} kesimida {_uz_date(date_str)} holatiga ko‘ra "
@@ -153,14 +150,11 @@ def build_docx(
             _p_left(doc, "Respublika kesimida:")
             _add_picture_center(doc, screens["mintaqa"])
 
-            _p_left(
-                doc, f"So‘nggi {count_date} kun bo‘yicha {gas} o‘rtacha qiymat grafigi:"
-            )
+            _p_left(doc, f"So‘nggi {count_date} kun bo‘yicha {gas} o‘rtacha qiymat grafigi:")
             _add_picture_center(doc, grafik["png"])
 
             doc.add_page_break()
 
-            # ===== PAGE 2: region png -> text =====
             _p_left(doc, f"{region_name} va unga yondosh hududlar:")
             _add_picture_center(doc, screens["rayon"])
 
@@ -173,31 +167,3 @@ def build_docx(
         doc.save(out_docx)
 
     return out_docx
-
-
-"""
-# ====== local test ======
-if __name__ == "__main__":
-    # входы для локального запуска
-    GASES = [ "CH4", "CO", "O3", "SO2"]
-    DATE = "2025-01-20"
-    PARENT_COD = 1706
-    COUNT_DATE = 7
-
-    RASTERS_ROOT = "/home/temur/Documents/Work/goo/data"
-    MINTAQA_SHP = "/home/temur/Documents/Work/goo/polygons/Mintaqa.shp"
-    TUMAN_SHP = "/home/temur/Documents/Work/goo/polygons/Tuman.shp"
-
-    TEXT_JSON_PATH = "/home/temur/Documents/Work/goo/text.json"
-    OUT_DOCX = "/home/temur/Documents/Work/goo/word/report.docx"
-
-    build_docx(
-        GASES, DATE, PARENT_COD, COUNT_DATE,
-        rasters_root=RASTERS_ROOT,
-        mintaqa_shp=MINTAQA_SHP,
-        tuman_shp=TUMAN_SHP,
-        text_json_path=TEXT_JSON_PATH,
-        out_docx=OUT_DOCX,
-    )
-    print("Saved:", OUT_DOCX)
-"""

@@ -24,3 +24,4 @@ python-docx
 cdsapi
 urllib3
 certifi
+GDAL
