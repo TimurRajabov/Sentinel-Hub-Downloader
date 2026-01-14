@@ -150,7 +150,9 @@ def build_docx(
             _p_left(doc, "Respublika kesimida:")
             _add_picture_center(doc, screens["mintaqa"])
 
-            _p_left(doc, f"So‘nggi {count_date} kun bo‘yicha {gas} o‘rtacha qiymat grafigi:")
+            _p_left(
+                doc, f"So‘nggi {count_date} kun bo‘yicha {gas} o‘rtacha qiymat grafigi:"
+            )
             _add_picture_center(doc, grafik["png"])
 
             doc.add_page_break()
