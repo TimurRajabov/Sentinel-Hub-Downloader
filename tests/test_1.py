@@ -1,9 +1,8 @@
 import json
-import os
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
+import pytest # type: ignore
 from fastapi.testclient import TestClient
 
 from api_all import GAS_UNITS, app, compute_mean_for_gas

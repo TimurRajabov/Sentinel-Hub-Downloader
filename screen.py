@@ -2,13 +2,13 @@
 import os
 from datetime import datetime
 
-import matplotlib
+import matplotlib # type: ignore
 import numpy as np
+import matplotlib.pyplot as plt # type: ignore
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap, Normalize
-from osgeo import gdal, ogr, osr
+from matplotlib.colors import LinearSegmentedColormap, Normalize # type: ignore
+from osgeo import gdal, ogr, osr # type: ignore
 
 gdal.UseExceptions()
 ogr.UseExceptions()
@@ -25,7 +25,7 @@ GAS_UNITS = {
 }
 LEGEND_SCALE = {"CH4": 1 / 1000.0}
 
-# --- Render settings ---
+
 MIN_PERCENT, MAX_PERCENT = 0.4, 99.6
 HIST_BUCKETS = 16384
 DISPLAY_INTERP = "bicubic"
@@ -94,7 +94,6 @@ def _get_feature_by_parent_cod(lyr, parent_cod):
     if lyr.GetLayerDefn().GetFieldIndex("parent_cod") < 0:
         raise RuntimeError("В VECTOR_PATH нет поля 'parent_cod'")
 
-    # числовой фильтр (если у вас строкой — поменяйте на кавычки)
     lyr.SetAttributeFilter(f"parent_cod = {int(parent_cod)}")
     feat = lyr.GetNextFeature()
     lyr.SetAttributeFilter(None)
@@ -152,7 +151,6 @@ def _add_legend(fig, ax, cmap, vmin_raw, vmax_raw, title, scale=1.0):
     fig.canvas.draw()
     bbox = ax.get_position()
 
-    # легенда в белой полосе снизу (позиция относительно карты)
     w, h = 0.20, 0.02
     left = bbox.x0
     bottom = max(0.0, bbox.y0 - 0.03 - h)
@@ -177,14 +175,7 @@ def make_screens(
     base_vector_path: str,
     out_dir: str,
 ) -> dict:
-    """
-    Returns:
-      {
-        "rayon": path_to_png,
-        "mintaqa": path_to_png,
-        "raster": tif_path
-      }
-    """
+    
     gas = gas.upper()
     os.makedirs(out_dir, exist_ok=True)
 
@@ -253,7 +244,7 @@ def make_screens(
         ax.set_xlim(min(x0, x1), max(x0, x1))
         ax.set_ylim(max(y0, y1), min(y0, y1))
 
-        # base borders
+ 
         bds = ogr.Open(base_vector_path)
         blyr = bds.GetLayer(0)
         b_srs = _srs_axis(blyr.GetSpatialRef(), fallback_epsg=3857)

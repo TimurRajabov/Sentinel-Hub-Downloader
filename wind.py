@@ -3,7 +3,7 @@ import random
 import time
 from datetime import date, datetime, timedelta
 
-import ee
+import ee # type: ignore
 import requests
 from dotenv import load_dotenv
 from requests.exceptions import RequestException, Timeout
@@ -58,7 +58,7 @@ if not PROJECT_ID:
 
 COLLECTION_ID = "ECMWF/ERA5_LAND/HOURLY"
 BAND = "temperature_2m"
-SCALE_METERS = 11132  # ~0.1°
+SCALE_METERS = 11132  
 CRS = "EPSG:4326"
 
 OUTPUT_DIR = os.path.join(SAVE_PATH, "temperature")
@@ -70,7 +70,7 @@ region_geom = ee.Geometry.Rectangle([LEFT_LON, BOTTOM_LAT, RIGHT_LON, TOP_LAT])
 
 def _backoff_sleep(attempt: int) -> None:
     sleep_s = min(MAX_SLEEP, BASE_SLEEP * (2 ** (attempt - 1))) + random.random()
-    print(f"    ⏳ backoff {sleep_s:.1f} сек...")
+    print(f"backoff {sleep_s:.1f} сек...")
     time.sleep(sleep_s)
 
 
@@ -99,14 +99,14 @@ def download_with_retries(img: ee.Image, outfile: str) -> None:
             return
 
         except (RequestException, Timeout) as e:
-            print(f"    ❌ сеть/сервис (попытка {attempt}/{MAX_RETRIES}): {e}")
+            print(f"сеть/сервис (попытка {attempt}/{MAX_RETRIES}): {e}")
             if attempt < MAX_RETRIES:
                 _backoff_sleep(attempt)
                 continue
             raise
 
         except Exception as e:
-            print(f"    ❌ ошибка (попытка {attempt}/{MAX_RETRIES}): {e}")
+            print(f"ошибка (попытка {attempt}/{MAX_RETRIES}): {e}")
             if attempt < MAX_RETRIES:
                 _backoff_sleep(attempt)
                 continue

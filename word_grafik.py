@@ -1,18 +1,17 @@
-# -*- coding: utf-8 -*-
 import json
 import os
 import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
 
-import matplotlib
+import matplotlib # type: ignore
 import numpy as np
-import rioxarray
+import rioxarray # type: ignore
 
 matplotlib.use("Agg")
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
-from osgeo import ogr, osr
+import matplotlib.dates as mdates # type: ignore
+import matplotlib.pyplot as plt  # type: ignore
+from osgeo import ogr, osr # type: ignore
 
 ogr.UseExceptions()
 osr.UseExceptions()
@@ -124,10 +123,6 @@ def _compute_mean(gas: str, values: np.ndarray) -> float:
 
 
 def _dedupe_by_date(selected: List[Tuple[datetime, str]]) -> List[Tuple[datetime, str]]:
-    """
-    Убираем дубли по дате (если в папке несколько tif на одну дату).
-    Берём один путь на дату (последний по сортировке путей).
-    """
     by_day: Dict[datetime, str] = {}
     for dt, path in selected:
         day = dt.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -187,14 +182,6 @@ def make_grafik(
     out_dir: str,
     lookback_days: int = 30,
 ) -> dict:
-    """
-    Делает {gas}_{DATE}_grafik.png
-
-    lookback_days: 30 / 15 / 7
-      30 -> текущее поведение
-      15 -> подписи каждые 2 дня
-      7  -> подписи на каждую дату
-    """
     gas = gas.upper()
     os.makedirs(out_dir, exist_ok=True)
 
@@ -266,3 +253,4 @@ def make_grafik(
 
     ds_vec = None
     return {"png": out_path, "region_name": region_name}
+# type: ignore

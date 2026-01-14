@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from datetime import date
 from types import SimpleNamespace
-
-import pytest
-
 from tests.conftest import reload_module
 
 
@@ -68,11 +65,9 @@ def test_backoff_sleep_no_wait(fake_env_and_ee, monkeypatch):
 def test_download_geotiff_success_writes_file(fake_env_and_ee, tmp_path, monkeypatch):
     m = reload_module("download_all")
 
-    # не спим
     monkeypatch.setattr(m.time, "sleep", lambda *_: None)
     monkeypatch.setattr(m.random, "random", lambda: 0.0)
 
-    # requests.get -> 200 OK
     def fake_get(_url, stream=True, timeout=0):
         return _FakeResponse(status_code=200, content_chunks=[b"hello", b"world"])
 
@@ -110,12 +105,11 @@ def test_download_geotiff_retries_then_success(fake_env_and_ee, tmp_path, monkey
 def test_run_sync_one_gas_one_day_happy_path(fake_env_and_ee, tmp_path, monkeypatch):
     m = reload_module("download_all")
 
-    # Упростим: 1 газ, 1 день
+
     m.gases = {"CH4": ("DUMMY", "BAND")}
     m.START_DAY = date(2025, 1, 1)
     m.END_DAY = date(2025, 1, 1)
 
-    # EE chain: col.size().getInfo() != 0, mean().clip() -> image
     class _FakeSize:
         def getInfo(self):
             return 1
@@ -135,7 +129,6 @@ def test_run_sync_one_gas_one_day_happy_path(fake_env_and_ee, tmp_path, monkeypa
 
     monkeypatch.setattr(m.ee, "ImageCollection", lambda *_a, **_k: _FakeCollection())
 
-    # Скачивание — просто создаём файл, без сети
     def fake_download(_img, outfile):
         with open(outfile, "wb") as f:
             f.write(b"ok")
@@ -145,6 +138,5 @@ def test_run_sync_one_gas_one_day_happy_path(fake_env_and_ee, tmp_path, monkeypa
     had_failures = m.run_sync()
     assert had_failures is False
 
-    # файл должен появиться
     p = tmp_path / "CH4" / "CH4_2025-01-01.tif"
     assert p.exists()

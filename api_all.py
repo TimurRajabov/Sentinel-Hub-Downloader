@@ -1,5 +1,3 @@
-# main.py
-# -*- coding: utf-8 -*-
 import json
 import os
 import re
@@ -9,17 +7,18 @@ from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
-import rioxarray
+import rioxarray # type: ignore
+from pyproj import Transformer # type: ignore
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
-from shapely.geometry import shape
-from shapely.ops import transform as shp_transform
+from shapely.geometry import shape # type: ignore
+from shapely.ops import transform as shp_transform # type: ignore
 from starlette.background import BackgroundTask
 
-from make_word import build_docx  # твоя функция генерации DOCX
+from make_word import build_docx
 
 load_dotenv()
 
@@ -38,14 +37,10 @@ app.add_middleware(
 def options_handler(full_path: str):
     return Response(status_code=204)
 
-
-# =======================
-#    ENV / PATHS
-# =======================
-SAVE_PATH = os.getenv("SAVE_PATH")  # Sentinel-5P root (например /data)
-OUTPUT_ROOT = os.getenv("OUTPUT_ROOT")  # ADS root (например /output)
-GEOJSON_PATH = os.getenv("GEOJSON_PATH")  # регионы по soato
-GEOJSON_PATH_1 = os.getenv("GEOJSON_PATH_1")  # Узбекистан полигон (legenda)
+SAVE_PATH = os.getenv("SAVE_PATH")  
+OUTPUT_ROOT = os.getenv("OUTPUT_ROOT") 
+GEOJSON_PATH = os.getenv("GEOJSON_PATH") 
+GEOJSON_PATH_1 = os.getenv("GEOJSON_PATH_1")  
 
 if not SAVE_PATH:
     raise RuntimeError("SAVE_PATH is not set in environment")
@@ -157,7 +152,6 @@ def _reproject_polygon_to_raster_crs(region_polygon, raster_crs):
     if str(raster_crs_str).lower() == "epsg:4326":
         return region_polygon
 
-    from pyproj import Transformer
 
     transformer = Transformer.from_crs("EPSG:4326", raster_crs_str, always_xy=True)
     return shp_transform(lambda x, y: transformer.transform(x, y), region_polygon)
@@ -371,7 +365,6 @@ async def air_monitoring_points(
     results = []
 
     for tif_path in tiffs:
-        # ПРАВКА: достаём дату из имени нормально (ADS тоже)
         period_raw = extract_date_from_filename_any(
             tif_path
         ) or extract_period_from_filename(os.path.basename(tif_path))
@@ -389,7 +382,6 @@ async def air_monitoring_points(
             vals = clip_and_get_values(tif_path, region_polygon)
             mean_raw = compute_mean_raw(vals, round_ndigits=None)
 
-            # масштаб для ADS (только mean)
             if effective_source == "ADS":
                 k = ADS_SCALE.get(gas)
                 mean_value = (
@@ -399,8 +391,6 @@ async def air_monitoring_points(
                 )
             else:
                 mean_value = mean_raw
-
-            pixels = int(vals.size)
         except Exception as e:
             results.append(
                 {
@@ -410,8 +400,6 @@ async def air_monitoring_points(
                     "mean": None,
                     "unit": GAS_UNITS[gas],
                     "period": period,
-                    "pixels": 0,
-                    "error": str(e),
                 }
             )
             continue

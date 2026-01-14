@@ -12,3 +12,6 @@ exclude =
     word,
     geojson,
     polygons
+
+per-file-ignores =
+    tests/*.py: F401
