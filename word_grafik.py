@@ -4,14 +4,14 @@ import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
 
-import matplotlib # type: ignore
+import matplotlib  # type: ignore
 import numpy as np
-import rioxarray # type: ignore
+import rioxarray  # type: ignore
 
 matplotlib.use("Agg")
-import matplotlib.dates as mdates # type: ignore
+import matplotlib.dates as mdates  # type: ignore
 import matplotlib.pyplot as plt  # type: ignore
-from osgeo import ogr, osr # type: ignore
+from osgeo import ogr, osr  # type: ignore
 
 ogr.UseExceptions()
 osr.UseExceptions()
@@ -253,4 +253,6 @@ def make_grafik(
 
     ds_vec = None
     return {"png": out_path, "region_name": region_name}
+
+
 # type: ignore

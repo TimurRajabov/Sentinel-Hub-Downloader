@@ -2,13 +2,13 @@
 import os
 from datetime import datetime
 
-import matplotlib # type: ignore
+import matplotlib  # type: ignore
+import matplotlib.pyplot as plt  # type: ignore
 import numpy as np
-import matplotlib.pyplot as plt # type: ignore
 
 matplotlib.use("Agg")
-from matplotlib.colors import LinearSegmentedColormap, Normalize # type: ignore
-from osgeo import gdal, ogr, osr # type: ignore
+from matplotlib.colors import LinearSegmentedColormap, Normalize  # type: ignore
+from osgeo import gdal, ogr, osr  # type: ignore
 
 gdal.UseExceptions()
 ogr.UseExceptions()
@@ -175,7 +175,7 @@ def make_screens(
     base_vector_path: str,
     out_dir: str,
 ) -> dict:
-    
+
     gas = gas.upper()
     os.makedirs(out_dir, exist_ok=True)
 
@@ -244,7 +244,6 @@ def make_screens(
         ax.set_xlim(min(x0, x1), max(x0, x1))
         ax.set_ylim(max(y0, y1), min(y0, y1))
 
- 
         bds = ogr.Open(base_vector_path)
         blyr = bds.GetLayer(0)
         b_srs = _srs_axis(blyr.GetSpatialRef(), fallback_epsg=3857)

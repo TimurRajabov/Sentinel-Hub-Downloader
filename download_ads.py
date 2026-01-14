@@ -5,8 +5,8 @@ import zipfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-import cdsapi # type: ignore
-import xarray as xr # type: ignore
+import cdsapi  # type: ignore
+import xarray as xr  # type: ignore
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
@@ -60,7 +60,7 @@ START_DAY_1 = env_date("CAMS_TART_DAY")
 END_DAY_1 = env_date("CAMS_ND_DAY")
 
 RETRY_MAX = int(env_str("CAMS_RETRY_MAX", "8"))
-SLEEP_BASE = int(env_str("CAMS_SLEEP_BASE", "10"))  
+SLEEP_BASE = int(env_str("CAMS_SLEEP_BASE", "10"))
 
 
 GASES = {
@@ -158,7 +158,7 @@ def retrieve_with_retry(
             client.retrieve(dataset, request, target)
             return
         except Exception as e:
-            wait = min(600, SLEEP_BASE * (2 ** (attempt - 1)))  
+            wait = min(600, SLEEP_BASE * (2 ** (attempt - 1)))
             print(f"retrieve failed (attempt {attempt}/{RETRY_MAX}): {e}")
             print(f"sleep {wait}s then retry...")
             time.sleep(wait)

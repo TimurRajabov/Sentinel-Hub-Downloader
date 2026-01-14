@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from types import SimpleNamespace
+
 from tests.conftest import reload_module
 
 
@@ -104,7 +105,6 @@ def test_download_geotiff_retries_then_success(fake_env_and_ee, tmp_path, monkey
 
 def test_run_sync_one_gas_one_day_happy_path(fake_env_and_ee, tmp_path, monkeypatch):
     m = reload_module("download_all")
-
 
     m.gases = {"CH4": ("DUMMY", "BAND")}
     m.START_DAY = date(2025, 1, 1)

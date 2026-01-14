@@ -7,15 +7,15 @@ from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
-import rioxarray # type: ignore
-from pyproj import Transformer # type: ignore
+import rioxarray  # type: ignore
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
-from shapely.geometry import shape # type: ignore
-from shapely.ops import transform as shp_transform # type: ignore
+from pyproj import Transformer  # type: ignore
+from shapely.geometry import shape  # type: ignore
+from shapely.ops import transform as shp_transform  # type: ignore
 from starlette.background import BackgroundTask
 
 from make_word import build_docx
@@ -37,10 +37,11 @@ app.add_middleware(
 def options_handler(full_path: str):
     return Response(status_code=204)
 
-SAVE_PATH = os.getenv("SAVE_PATH")  
-OUTPUT_ROOT = os.getenv("OUTPUT_ROOT") 
-GEOJSON_PATH = os.getenv("GEOJSON_PATH") 
-GEOJSON_PATH_1 = os.getenv("GEOJSON_PATH_1")  
+
+SAVE_PATH = os.getenv("SAVE_PATH")
+OUTPUT_ROOT = os.getenv("OUTPUT_ROOT")
+GEOJSON_PATH = os.getenv("GEOJSON_PATH")
+GEOJSON_PATH_1 = os.getenv("GEOJSON_PATH_1")
 
 if not SAVE_PATH:
     raise RuntimeError("SAVE_PATH is not set in environment")
@@ -151,7 +152,6 @@ def _reproject_polygon_to_raster_crs(region_polygon, raster_crs):
 
     if str(raster_crs_str).lower() == "epsg:4326":
         return region_polygon
-
 
     transformer = Transformer.from_crs("EPSG:4326", raster_crs_str, always_xy=True)
     return shp_transform(lambda x, y: transformer.transform(x, y), region_polygon)

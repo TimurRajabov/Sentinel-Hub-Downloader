@@ -3,7 +3,7 @@ import random
 import time
 from datetime import date, datetime, timedelta
 
-import ee # type: ignore
+import ee  # type: ignore
 import requests
 from dotenv import load_dotenv
 from requests.exceptions import RequestException, Timeout
@@ -58,7 +58,7 @@ if not PROJECT_ID:
 
 COLLECTION_ID = "ECMWF/ERA5_LAND/HOURLY"
 BAND = "temperature_2m"
-SCALE_METERS = 11132  
+SCALE_METERS = 11132
 CRS = "EPSG:4326"
 
 OUTPUT_DIR = os.path.join(SAVE_PATH, "temperature")
