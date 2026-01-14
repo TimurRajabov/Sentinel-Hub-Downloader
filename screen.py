@@ -190,12 +190,16 @@ def make_screens(
     mb = band.GetMaskBand()
     if mb is not None:
         arr[mb.ReadAsArray() == 0] = np.nan
-import matplotlib # type: ignore
-import numpy as np
-import matplotlib.pyplot as plt # type: ignore
-from matplotlib.colors import LinearSegmentedColormap, Normalize # type: ignore
-from osgeo import gdal, ogr, osr # type: ignore
+
+
 from datetime import datetime
+
+import matplotlib  # type: ignore
+import matplotlib.pyplot as plt  # type: ignore
+import numpy as np
+from matplotlib.colors import LinearSegmentedColormap, Normalize  # type: ignore
+from osgeo import gdal, ogr, osr  # type: ignore
+
 matplotlib.use("Agg")
 
 gdal.UseExceptions()
@@ -467,7 +471,6 @@ def make_screens(
     render_one("layer", out_mintaqa, base_w=BASE_W_MINTAQA, highlight=False)
 
     return {"rayon": out_rayon, "mintaqa": out_mintaqa, "raster": tif_path}
-
 
     vmin_raw, vmax_raw = float(np.nanmin(arr)), float(np.nanmax(arr))
     vmin_clip, vmax_clip = _percent_clip(arr, MIN_PERCENT, MAX_PERCENT, HIST_BUCKETS)
