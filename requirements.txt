@@ -11,17 +11,16 @@ geojson
 
 requests
 python-dotenv
-
 earthengine-api
 
 pytest
 pytest-cov
 coverage
 
-
 matplotlib
 python-docx
 cdsapi
 urllib3
 certifi
-GDAL
+
+# GDAL НЕ сюда

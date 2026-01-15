@@ -6,6 +6,9 @@ import pytest  # type: ignore
 from fastapi.testclient import TestClient
 
 from api_all import GAS_UNITS, app, compute_mean_for_gas
+import pytest
+pytestmark = pytest.mark.gdal
+
 
 client = TestClient(app)
 
