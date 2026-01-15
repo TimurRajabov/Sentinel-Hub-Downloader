@@ -1,8 +1,8 @@
 import os
-import smbclient
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
+import smbclient
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,19 +22,19 @@ def env_bool(name: str, default: bool = False) -> bool:
     return v.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
-def env_list(name: str, default: Optional[List[str]] = None, sep: str = ",") -> List[str]:
+def env_list(
+    name: str, default: Optional[List[str]] = None, sep: str = ","
+) -> List[str]:
     v = os.getenv(name)
     if not v:
         return default or []
     return [x.strip() for x in v.split(sep) if x.strip()]
 
 
-
 SERVER = env_required("SMB_SERVER")
 PASSWORD = env_required("SMB_PASSWORD")
-DATA_DIR = Path(env_required("SAVE_PATH"))      
-OUTPUT_DIR = Path(env_required("OUTPUT_ROOT"))  
-
+DATA_DIR = Path(env_required("SAVE_PATH"))
+OUTPUT_DIR = Path(env_required("OUTPUT_ROOT"))
 
 
 REMOTE_BASE = env_required("REMOTE_BASE").replace("/", "\\")
@@ -62,7 +62,6 @@ def auth() -> None:
             print(f"❌ Auth failed with: {u} -> {e}")
             last_err = e
     raise last_err
-
 
 
 def ensure_remote_dir(remote_dir: str) -> None:
@@ -112,7 +111,6 @@ def upload_file(local_path: Path, remote_path: str) -> None:
     print(f"✅ Uploaded: {local_path} -> {remote_path}")
 
 
-
 def build_remote_path(local_path: Path, base_dir: Path) -> str:
     """
     data   -> \\...\Rasters\sentinel\<relpath>
@@ -120,7 +118,6 @@ def build_remote_path(local_path: Path, base_dir: Path) -> str:
     """
     rel = local_path.relative_to(base_dir)
     rel_str = str(rel).replace("/", "\\")
-
 
     if base_dir.resolve() == DATA_DIR.resolve():
         target = "sentinel"
