@@ -67,7 +67,9 @@ def test_get_last_downloaded_day_safe(fake_env_and_ee, tmp_path):
         pytest.skip(f"Unexpected return type from get_last_downloaded_day: {type(got)}")
 
 
-def test_download_day_writes_files_if_function_exists(fake_env_and_ee, tmp_path, monkeypatch):
+def test_download_day_writes_files_if_function_exists(
+    fake_env_and_ee, tmp_path, monkeypatch
+):
     m = reload_module("wind")
 
     if not hasattr(m, "download_era5_for_day"):
@@ -99,7 +101,9 @@ def test_download_day_writes_files_if_function_exists(fake_env_and_ee, tmp_path,
         monkeypatch.setattr(
             m.requests,
             "get",
-            lambda *_a, **_k: _FakeResponse(status_code=200, content_chunks=[b"a", b"b"]),
+            lambda *_a, **_k: _FakeResponse(
+                status_code=200, content_chunks=[b"a", b"b"]
+            ),
         )
 
     if hasattr(m, "time"):
