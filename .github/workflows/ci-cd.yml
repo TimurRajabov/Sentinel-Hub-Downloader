@@ -120,14 +120,6 @@ jobs:
           START_DATE: "2025-01-01"
           END_DATE: "2025-01-02"
         run: |
-          python - << 'PY'
-          try:
-              import osgeo  # noqa
-              print("GDAL_AVAILABLE=true")
-          except Exception:
-              print("GDAL_AVAILABLE=false")
-          PY
-
           GDAL_AVAILABLE="$(python - << 'PY'
           try:
               import osgeo  # noqa
@@ -151,36 +143,10 @@ jobs:
           name: coverage-report
           path: coverage.xml
 
-  sonarqube:
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
-    runs-on: self-hosted
-    needs: test
-    timeout-minutes: 30
-
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Download coverage
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-report
-
-      - name: SonarQube Scan
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST: ${{ secrets.SONAR_HOST }}
-        run: |
-          export SONAR_SCANNER_OPTS="-Xmx2g"
-          sonar-scanner \
-            -Dsonar.host.url=${SONAR_HOST} \
-            -Dsonar.login=${SONAR_TOKEN}
-
   build_and_push:
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: self-hosted
-    needs: sonarqube
+    needs: test
     timeout-minutes: 60
 
     steps:

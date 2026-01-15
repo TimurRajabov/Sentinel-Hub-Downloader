@@ -96,62 +96,12 @@ services:
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
     command: server /data --console-address ":9021"
     ports:
-      - "9000:9000"   
-      - "9021:9001"  
+      - "9000:9000"
+      - "9021:9001"
     volumes:
       - minio_data:/data
     networks:
       - sentinel-net
-
-  sonar-postgres:
-    image: postgres:15
-    container_name: sonar-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: sonarqube
-      POSTGRES_USER: sonar
-      POSTGRES_PASSWORD: sonar
-    volumes:
-      - sonar_pgdata:/var/lib/postgresql/data
-    networks:
-      - sentinel-net
-
-  sonarqube:
-    image: sonarqube:26.1.0-community
-    container_name: sonarqube
-    restart: unless-stopped
-    depends_on:
-      - sonar-postgres
-    ports:
-      - "9101:9000"
-    environment:
-      SONAR_JDBC_URL: jdbc:postgresql://sonar-postgres:5432/sonarqube
-      SONAR_JDBC_USERNAME: sonar
-      SONAR_JDBC_PASSWORD: sonar
-    volumes:
-      - sonarqube_data:/opt/sonarqube/data
-      - sonarqube_extensions:/opt/sonarqube/extensions
-      - sonarqube_logs:/opt/sonarqube/logs
-    networks:
-      - sentinel-net
-    ulimits:
-      nofile:
-        soft: 65536
-        hard: 65536
-
-  scanner:
-    image: sonarsource/sonar-scanner-cli:latest
-    container_name: sonar-scanner
-    depends_on:
-      - sonarqube
-    environment:
-      SONAR_HOST_URL: http://sonarqube:9000
-      SONAR_TOKEN: ${SONAR_TOKEN}
-    volumes:
-      - /opt/sentinel5p:/usr/src
-    networks:
-      - sentinel-net
-    entrypoint: ["sleep", "infinity"]
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
@@ -166,7 +116,7 @@ services:
       - /dev/disk/:/dev/disk:ro
     networks:
       - sentinel-net
-  
+
   send:
     build: .
     container_name: sentinel5p-send
@@ -182,13 +132,7 @@ services:
       - sentinel-net
     restart: "no"
 
-
 volumes:
-  sonar_pgdata:
-  sonarqube_data:
-  sonarqube_extensions:
-  sonarqube_logs:
-
   minio_data:
 
 networks:
