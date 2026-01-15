@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   lint:
-    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip ci]')
+    if: "github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: self-hosted
     timeout-minutes: 30
 
@@ -30,7 +30,6 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
-          # cache: "pip"  # на self-hosted часто таймаутит restore
 
       - name: Upgrade pip
         run: python -m pip install --upgrade pip
@@ -99,7 +98,6 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
-          # cache: "pip"
 
       - name: Set PYTHONPATH
         run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
@@ -110,21 +108,9 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          # если httpx не в requirements.txt — оставь эту строку
           pip install httpx
 
-      - name: Detect GDAL/osgeo availability
-        id: gdalcheck
-        run: |
-          python - << 'PY'
-          try:
-              from osgeo import gdal  # noqa
-              print("gdal_available=true")
-          except Exception:
-              print("gdal_available=false")
-          PY
-
-      - name: Run tests
+      - name: Run tests (auto-skip gdal if osgeo missing)
         env:
           ENV: ci
           LEFT_LON: "0"
@@ -134,9 +120,17 @@ jobs:
           START_DATE: "2025-01-01"
           END_DATE: "2025-01-02"
         run: |
+          python - << 'PY'
+          try:
+              import osgeo  # noqa
+              print("GDAL_AVAILABLE=true")
+          except Exception:
+              print("GDAL_AVAILABLE=false")
+          PY
+
           GDAL_AVAILABLE="$(python - << 'PY'
           try:
-              from osgeo import gdal  # noqa
+              import osgeo  # noqa
               print("true")
           except Exception:
               print("false")
@@ -158,7 +152,7 @@ jobs:
           path: coverage.xml
 
   sonarqube:
-    if: !contains(github.event.head_commit.message, '[skip ci]')
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: self-hosted
     needs: test
     timeout-minutes: 30
@@ -184,7 +178,7 @@ jobs:
             -Dsonar.login=${SONAR_TOKEN}
 
   build_and_push:
-    if: !contains(github.event.head_commit.message, '[skip ci]')
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: self-hosted
     needs: sonarqube
     timeout-minutes: 60
@@ -209,7 +203,7 @@ jobs:
           docker push ${{ secrets.DOCKER_USER }}/sentinel5p-api:latest
 
   deploy:
-    if: !contains(github.event.head_commit.message, '[skip ci]')
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: self-hosted
     needs: build_and_push
     timeout-minutes: 30
