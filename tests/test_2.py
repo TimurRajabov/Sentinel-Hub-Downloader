@@ -1,163 +1,88 @@
 # tests/test_2.py
 import os
-from datetime import date, datetime, timedelta
-from unittest.mock import MagicMock
-
-import pytest
 
 
-# ----------------------------
-# helpers (как в твоём скрипте)
-# ----------------------------
-def parse_day(s: str | None) -> date | None:
-    if not s:
-        return None
-    return datetime.strptime(s, "%Y-%m-%d").date()
+class _FakeResponse:
+    def __init__(self, status_code=200, content_chunks=None, reason="OK"):
+        self.status_code = status_code
+        self.reason = reason
+        self._chunks = content_chunks or [b"x"]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise Exception(f"HTTP {self.status_code} {self.reason}")
+
+    def iter_content(self, chunk_size=1024 * 1024):
+        for c in self._chunks:
+            yield c
 
 
-# ----------------------------
-# FIX: вместо реального ee.Initialize()
-# ----------------------------
-@pytest.fixture()
-def env_ok(monkeypatch, tmp_path):
-    # минимальный набор переменных, чтобы код мог жить
-    monkeypatch.setenv("PROJECT_ID", "dummy-project")
-    monkeypatch.setenv("LEFT_LON", "55.0")
-    monkeypatch.setenv("RIGHT_LON", "56.0")
-    monkeypatch.setenv("BOTTOM_LAT", "40.0")
-    monkeypatch.setenv("TOP_LAT", "41.0")
-    monkeypatch.setenv("SAVE_PATH", str(tmp_path))
-    monkeypatch.setenv("START_DATE", "2025-01-01")
-    monkeypatch.setenv("END_DATE", "2025-01-02")
-    return tmp_path
-
-
-def test_parse_day_ok():
-    assert parse_day("2025-01-01") == date(2025, 1, 1)
-
-
-def test_parse_day_none():
-    assert parse_day(None) is None
-    assert parse_day("") is None
-
-
-def test_validate_dates_ok():
-    start = parse_day("2025-01-01")
-    end = parse_day("2025-01-02")
-    assert start <= end
-
-
-def test_validate_dates_invalid():
-    start = parse_day("2025-01-03")
-    end = parse_day("2025-01-02")
-    assert start > end
-
-
-# -----------------------------------------
-# Тест логики run_sync без EarthEngine/HTTP
-# -----------------------------------------
-def test_run_sync_flow_without_ee(monkeypatch, env_ok):
+def download_with_retries(get_fn, url: str, outfile: str, max_retries: int = 3) -> bool:
     """
-    Мы НЕ импортируем реальный ee, requests.
-    Вместо этого тестируем "поведение": если col.size()==0 -> пропуск,
-    если download ок -> файл создаётся, цикл идёт дальше.
+    Локальная "чистая" реализация твоей идеи:
+    - на 5xx/429 ретраим
+    - пишем во временный .part и делаем os.replace
     """
+    for attempt in range(1, max_retries + 1):
+        try:
+            with get_fn(url, stream=True, timeout=1) as r:
+                if r.status_code in (429, 500, 502, 503, 504):
+                    raise Exception(f"retryable {r.status_code}")
+                r.raise_for_status()
 
-    # 1) Мокаем ee модуль и его цепочки
-    ee = MagicMock()
+                tmp = outfile + ".part"
+                with open(tmp, "wb") as f:
+                    for chunk in r.iter_content():
+                        f.write(chunk)
+                os.replace(tmp, outfile)
 
-    # region rectangle
-    ee.Geometry.Rectangle.return_value = "REGION"
-
-    # ImageCollection(...) -> объект col
-    col = MagicMock()
-    ee.ImageCollection.return_value = col
-
-    # col.select(...).filterDate(... ) -> возвращает col (цепочка)
-    col.select.return_value = col
-    col.filterDate.return_value = col
-
-    # col.size().getInfo() — делаем так:
-    #   первый день: 0 (нет данных)
-    #   второй день: 1 (есть данные)
-    size_obj = MagicMock()
-    size_obj.getInfo.side_effect = [0, 1]
-    col.size.return_value = size_obj
-
-    # col.mean().clip(region)
-    img = MagicMock()
-    col.mean.return_value = img
-    img.clip.return_value = img
-
-    # 2) Мокаем download функцию: просто создаёт файл
-    def fake_download_geotiff_with_retries(_img, outfile: str):
-        os.makedirs(os.path.dirname(outfile), exist_ok=True)
-        with open(outfile, "wb") as f:
-            f.write(b"dummy")
-
-    # 3) Собираем минимальную копию логики run_sync (как у тебя),
-    #    но без вечного цикла и без реального ee.Initialize()
-    gases = {
-        "CH4": ("DATASET", "BAND"),
-    }
-
-    START_DAY = parse_day(os.getenv("START_DATE"))
-    END_DAY = parse_day(os.getenv("END_DATE"))
-    SAVE_PATH = os.getenv("SAVE_PATH")
-
-    assert START_DAY is not None and END_DAY is not None
-
-    # ee.Initialize(project=...)
-    ee.Initialize(project=os.getenv("PROJECT_ID"))
-
-    region = ee.Geometry.Rectangle(
-        [
-            float(os.getenv("LEFT_LON")),
-            float(os.getenv("BOTTOM_LAT")),
-            float(os.getenv("RIGHT_LON")),
-            float(os.getenv("TOP_LAT")),
-        ]
-    )
-
-    had_failures = False
-
-    for gas_name, (dataset, band) in gases.items():
-        gas_folder = os.path.join(SAVE_PATH, gas_name)
-        os.makedirs(gas_folder, exist_ok=True)
-
-        current_date = START_DAY
-        while current_date <= END_DAY:
-            next_date = current_date + timedelta(days=1)
-            date_str = current_date.strftime("%Y-%m-%d")
-            outfile = os.path.join(gas_folder, f"{gas_name}_{date_str}.tif")
-
-            col2 = (
-                ee.ImageCollection(dataset)
-                .select(band)
-                .filterDate(str(current_date), str(next_date))
-            )
-
-            # нет данных -> skip
-            if col2.size().getInfo() == 0:
-                current_date = next_date
+            return True
+        except Exception:
+            if attempt < max_retries:
                 continue
+            return False
 
-            img2 = col2.mean().clip(region)
 
-            try:
-                fake_download_geotiff_with_retries(img2, outfile)
-                current_date = next_date
-            except Exception:
-                had_failures = True
-                break
+def test_download_success(tmp_path):
+    out = tmp_path / "a.tif"
 
-    # 4) Проверки
-    # День 2025-01-01 был "нет данных" -> файл НЕ создан
-    f1 = env_ok / "CH4" / "CH4_2025-01-01.tif"
-    assert not f1.exists()
+    def fake_get(_url, stream=True, timeout=0):
+        return _FakeResponse(200, [b"hello", b"world"])
 
-    # День 2025-01-02 был "есть данные" -> файл создан
-    f2 = env_ok / "CH4" / "CH4_2025-01-02.tif"
-    assert f2.exists()
+    ok = download_with_retries(fake_get, "http://x", str(out), max_retries=2)
+    assert ok is True
+    assert out.exists()
+    assert out.read_bytes() == b"helloworld"
 
-    assert had_failures is False
+
+def test_download_retry_then_success(tmp_path):
+    out = tmp_path / "b.tif"
+    calls = {"n": 0}
+
+    def fake_get(_url, stream=True, timeout=0):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return _FakeResponse(500, [b"x"], reason="Server Error")
+        return _FakeResponse(200, [b"ok"])
+
+    ok = download_with_retries(fake_get, "http://x", str(out), max_retries=3)
+    assert ok is True
+    assert calls["n"] == 2
+    assert out.read_bytes() == b"ok"
+
+
+def test_download_fail_after_retries(tmp_path):
+    out = tmp_path / "c.tif"
+
+    def fake_get(_url, stream=True, timeout=0):
+        return _FakeResponse(503, [b"x"], reason="Service Unavailable")
+
+    ok = download_with_retries(fake_get, "http://x", str(out), max_retries=2)
+    assert ok is False
+    assert not out.exists()
