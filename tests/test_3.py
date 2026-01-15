@@ -1,6 +1,8 @@
 # tests/test_4.py
-import pytest
 from datetime import date
+
+import pytest
+
 from tests.conftest import reload_module
 
 

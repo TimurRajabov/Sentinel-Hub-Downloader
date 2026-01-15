@@ -108,7 +108,9 @@ def test_download_day_writes_files_if_function_exists(tmp_path, monkeypatch):
         monkeypatch.setattr(
             m.requests,
             "get",
-            lambda *_a, **_k: _FakeResponse(status_code=200, content_chunks=[b"a", b"b"]),
+            lambda *_a, **_k: _FakeResponse(
+                status_code=200, content_chunks=[b"a", b"b"]
+            ),
         )
 
     # без sleep
