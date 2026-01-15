@@ -11,10 +11,17 @@ import rioxarray  # type: ignore
 matplotlib.use("Agg")
 import matplotlib.dates as mdates  # type: ignore
 import matplotlib.pyplot as plt  # type: ignore
-from osgeo import ogr, osr  # type: ignore
 
-ogr.UseExceptions()
-osr.UseExceptions()
+
+try:
+    from osgeo import ogr, osr  # type: ignore
+
+    ogr.UseExceptions()
+    osr.UseExceptions()
+except ModuleNotFoundError:  # pragma: no cover
+    ogr = None  # type: ignore
+    osr = None  # type: ignore
+
 
 GAS_UNITS = {
     "CH4": "ppm",
@@ -25,6 +32,15 @@ GAS_UNITS = {
     "O3": "mol/m²",
     "AERAI": "unitless",
 }
+
+
+def _require_osgeo():
+    """Явно объясняем, что нужно поставить GDAL/osgeo."""
+    if ogr is None or osr is None:
+        raise RuntimeError(
+            "GDAL/osgeo is not installed. "
+            "Install GDAL (python bindings) to use make_grafik()/word_grafik."
+        )
 
 
 def _parse_date_from_filename(path: str) -> datetime:
@@ -53,7 +69,8 @@ def _list_tiffs(rasters_root: str, gas: str) -> List[str]:
 
 
 def _open_layer(shp_path: str):
-    ds = ogr.Open(shp_path)
+    _require_osgeo()
+    ds = ogr.Open(shp_path)  # type: ignore[union-attr]
     if ds is None:
         raise RuntimeError(f"Не могу открыть shp: {shp_path}")
     lyr = ds.GetLayer(0)
@@ -75,15 +92,16 @@ def _get_feature_and_name(lyr, parent_cod: int):
     return feat, str(name)
 
 
-def _srs_axis(srs: osr.SpatialReference) -> osr.SpatialReference:
-    srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+def _srs_axis(srs):
+    _require_osgeo()
+    srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)  # type: ignore[union-attr]
     return srs
 
 
-def _geom_to_raster_geojson(
-    geom: ogr.Geometry, vec_srs: osr.SpatialReference, ras_crs
-) -> dict:
-    ras_srs = osr.SpatialReference()
+def _geom_to_raster_geojson(geom, vec_srs, ras_crs) -> dict:
+    _require_osgeo()
+
+    ras_srs = osr.SpatialReference()  # type: ignore[union-attr]
     if ras_crs is None:
         ras_srs.ImportFromEPSG(4326)
     else:
@@ -101,7 +119,7 @@ def _geom_to_raster_geojson(
 
     g2 = geom.Clone()
     if not vec_srs.IsSame(ras_srs):
-        ct = osr.CoordinateTransformation(vec_srs, ras_srs)
+        ct = osr.CoordinateTransformation(vec_srs, ras_srs)  # type: ignore[union-attr]
         g2.Transform(ct)
 
     return json.loads(g2.ExportToJson())
@@ -151,15 +169,11 @@ def _build_chart_png(
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%m.%d"))
 
-    # ---- Тики по вашему правилу ----
     if lookback_days == 7:
-        # каждую дату (все точки)
         ax.set_xticks(x)
     elif lookback_days == 15:
-        # каждые 2 дня
         ax.xaxis.set_major_locator(mdates.DayLocator(interval=2))
     else:
-        # 30 (или другое) — как раньше: до ~15 подписей
         ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=6, maxticks=15))
 
     fig.autofmt_xdate(rotation=0, ha="center")
@@ -182,6 +196,8 @@ def make_grafik(
     out_dir: str,
     lookback_days: int = 30,
 ) -> dict:
+    _require_osgeo()
+
     gas = gas.upper()
     os.makedirs(out_dir, exist_ok=True)
 
@@ -228,7 +244,6 @@ def make_grafik(
             f"Нет tif в диапазоне {start_dt:%Y-%m-%d}..{end_dt:%Y-%m-%d} для {gas}"
         )
 
-    # FIX: убираем дубли по датам (иначе точки могут повторяться)
     selected = _dedupe_by_date(selected)
 
     points: List[Tuple[datetime, float]] = []
@@ -253,6 +268,3 @@ def make_grafik(
 
     ds_vec = None
     return {"png": out_path, "region_name": region_name}
-
-
-# type: ignore
