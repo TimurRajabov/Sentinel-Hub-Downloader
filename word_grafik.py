@@ -12,7 +12,6 @@ matplotlib.use("Agg")
 import matplotlib.dates as mdates  # type: ignore
 import matplotlib.pyplot as plt  # type: ignore
 
-
 try:
     from osgeo import ogr, osr  # type: ignore
 
