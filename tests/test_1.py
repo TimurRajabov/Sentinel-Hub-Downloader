@@ -23,7 +23,10 @@ def _stub_heavy_modules():
 
     # 2) stub word_grafik.make_grafik
     word_grafik = types.ModuleType("word_grafik")
-    word_grafik.make_grafik = lambda *args, **kwargs: {"png": "dummy.png", "region_name": "dummy"}
+    word_grafik.make_grafik = lambda *args, **kwargs: {
+        "png": "dummy.png",
+        "region_name": "dummy",
+    }
     sys.modules.setdefault("word_grafik", word_grafik)
 
     # 3) stub make_word.build_docx
@@ -133,10 +136,16 @@ def test_air_monitoring_points(monkeypatch, api, client, gas):
     monkeypatch.setattr(api.os.path, "exists", lambda p: True)
 
     # 3) list_tiffs возвращает "какой-то" tif
-    monkeypatch.setattr(api, "list_tiffs", lambda *args, **kwargs: ["data/new_tif/X/X_2025-11-20.tif"])
+    monkeypatch.setattr(
+        api, "list_tiffs", lambda *args, **kwargs: ["data/new_tif/X/X_2025-11-20.tif"]
+    )
 
     # 4) rioxarray.open_rasterio -> возвращает мок da
-    monkeypatch.setattr(api.rioxarray, "open_rasterio", lambda *args, **kwargs: mock_rioxarray_dataarray(0.005))
+    monkeypatch.setattr(
+        api.rioxarray,
+        "open_rasterio",
+        lambda *args, **kwargs: mock_rioxarray_dataarray(0.005),
+    )
 
     response = client.get(f"/api/air_monitoring_points?gas={gas}&region=1726")
     assert response.status_code == 200
