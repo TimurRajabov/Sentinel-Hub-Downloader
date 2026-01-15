@@ -1,126 +1,99 @@
-from __future__ import annotations
+import json
+import importlib
+from unittest.mock import MagicMock, patch
 
-from datetime import date
-from pathlib import Path
+import numpy as np
+import pytest
+from fastapi.testclient import TestClient
 
-from tests.conftest import reload_module
+
+# -----------------------------------------
+# MOCK GEOJSON (будем подсовывать через open)
+# -----------------------------------------
+MOCK_GEOJSON = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {"region_soato": 1726},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [55.0, 40.0],
+                        [56.0, 40.0],
+                        [56.0, 41.0],
+                        [55.0, 41.0],
+                        [55.0, 40.0],
+                    ]
+                ],
+            },
+        }
+    ],
+}
 
 
-def _set_outdir(m, tmp_path: Path) -> Path:
+def mock_rasterio_array(value=0.005):
+    obj = MagicMock()
+    obj.squeeze.return_value = obj
+    obj.rio.write_crs.return_value = obj
+    arr = np.array([[value, value], [value, value]])
+    obj.rio.clip.return_value = MagicMock(values=arr)
+    return obj
+
+
+@pytest.fixture()
+def api(monkeypatch, tmp_path):
     """
-    Принудительно направляем temp.py писать в tmp_path/temp (или читать оттуда),
-    независимо от того, как в модуле назван путь (SAVE_PATH/OUT_DIR/OUTPUT_DIR).
+    Импортируем api_all только ПОСЛЕ выставления env,
+    чтобы не было RuntimeError по SAVE_PATH/GEOJSON_PATH.
     """
-    out = tmp_path / "temp"
-    out.mkdir(parents=True, exist_ok=True)
+    # чтобы api_all не падал на старте:
+    monkeypatch.setenv("ENV", "test")
+    monkeypatch.setenv("SAVE_PATH", str(tmp_path / "data"))
+    monkeypatch.setenv("OUTPUT_ROOT", str(tmp_path / "output"))
+    monkeypatch.setenv("GEOJSON_PATH", str(tmp_path / "geo.json"))
+    monkeypatch.setenv("GEOJSON_PATH_1", str(tmp_path / "geo1.json"))
 
-    # разные проекты называют по-разному — перестрахуемся
-    for name in ("SAVE_PATH", "OUT_DIR", "OUTPUT_DIR", "OUTPUT_PATH", "TEMP_OUT_DIR"):
-        if hasattr(m, name):
-            setattr(m, name, str(out))
+    # на всякий случай создадим фейковые файлы, если код реально попытается читать
+    (tmp_path / "geo.json").write_text(json.dumps(MOCK_GEOJSON), encoding="utf-8")
+    (tmp_path / "geo1.json").write_text(json.dumps(MOCK_GEOJSON), encoding="utf-8")
 
-    # если модуль делает os.path.join(SAVE_PATH, "temp") — нужно, чтобы SAVE_PATH был tmp_path
-    if hasattr(m, "SAVE_PATH"):
-        setattr(m, "SAVE_PATH", str(tmp_path))
-
-    return out
-
-
-def test_parse_day(fake_env_and_ee):
-    m = reload_module("temp")
-    assert m.parse_day("2025-01-01") == date(2025, 1, 1)
-    assert m.parse_day(None) is None
+    import api_all  # noqa
+    importlib.reload(api_all)
+    return api_all
 
 
-def test_get_last_downloaded_day(fake_env_and_ee, tmp_path):
-    m = reload_module("temp")
-    out = _set_outdir(m, tmp_path)
-
-    # ВАЖНО: файлы создаём именно там, где temp.py реально читает
-    (out / "20250105_U_00.tif").write_bytes(b"x")
-    (out / "20250102_V_01.tif").write_bytes(b"x")
-    (out / "badname.tif").write_bytes(b"x")
-
-    assert m.get_last_downloaded_day() == date(2025, 1, 5)
+@pytest.fixture()
+def client(api):
+    return TestClient(api.app)
 
 
-def test_run_sync_no_files_branch(fake_env_and_ee, tmp_path, monkeypatch):
-    """
-    Ветка: last_day = None -> стартуем с START_DAY -> скачиваем дни.
-    """
-    m = reload_module("temp")
-    _set_outdir(m, tmp_path)
-
-    m.START_DAY = date(2025, 1, 1)
-    m.END_DAY = date(2025, 1, 2)
-
-    # last_day = None
-    monkeypatch.setattr(m, "get_last_downloaded_day", lambda: None)
-
-    # не ходим в EE/requests
-    calls = {"n": 0, "days": []}
-
-    def fake_download(day):
-        calls["n"] += 1
-        calls["days"].append(day)
-
-    monkeypatch.setattr(m, "download_era5_for_day", fake_download)
-
-    res = m.run_sync()
-
-    # run_sync может быть без return
-    assert res is None or res is False or res is True
-    assert calls["n"] == 2
-    assert calls["days"] == [date(2025, 1, 1), date(2025, 1, 2)]
+def test_compute_mean_for_ch4(api):
+    arr = np.array([2000, 3000, 4000])
+    assert api.compute_mean_for_gas("CH4", arr) == 3.0
 
 
-def test_run_sync_continue_from_last_day(fake_env_and_ee, tmp_path, monkeypatch):
-    """
-    Ветка: last_day есть -> начинаем с last_day+1.
-    """
-    m = reload_module("temp")
-    _set_outdir(m, tmp_path)
-
-    m.START_DAY = date(2025, 1, 1)
-    m.END_DAY = date(2025, 1, 3)
-
-    monkeypatch.setattr(m, "get_last_downloaded_day", lambda: date(2025, 1, 1))
-
-    called_days = []
-
-    def fake_download(day):
-        called_days.append(day)
-
-    monkeypatch.setattr(m, "download_era5_for_day", fake_download)
-
-    res = m.run_sync()
-    assert res is None or res is False or res is True
-
-    # должны скачаться 2025-01-02 и 2025-01-03
-    assert called_days == [date(2025, 1, 2), date(2025, 1, 3)]
+def test_compute_mean_for_o3(api):
+    arr = np.array([0.1, 0.2, 0.3])
+    assert api.compute_mean_for_gas("O3", arr) == round(np.mean(arr), 3)
 
 
-def test_run_sync_already_done_branch(fake_env_and_ee, tmp_path, monkeypatch):
-    """
-    Ветка: day > END_DAY -> 'уже всё скачано' и выход.
-    """
-    m = reload_module("temp")
-    _set_outdir(m, tmp_path)
+@pytest.mark.parametrize("gas", ["CH4", "CO", "NO2", "SO2", "HCHO", "O3", "AERAI"])
+@patch("api_all.os.path.exists", return_value=True)
+@patch("api_all.list_tiffs", return_value=["data/new_tif/X/X_2025-11-20.tif"])
+@patch("api_all.rioxarray.open_rasterio", return_value=mock_rasterio_array(0.005))
+@patch("builtins.open")
+def test_air_monitoring_points(mock_open, mock_rio, mock_tiffs, mock_exists, api, client, gas):
+    # мок open(...) чтобы geojson читался из памяти (на случай если api_all делает open(GEOJSON_PATH))
+    mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(MOCK_GEOJSON)
 
-    m.START_DAY = date(2025, 1, 1)
-    m.END_DAY = date(2025, 1, 1)
+    resp = client.get(f"/api/air_monitoring_points?gas={gas}&region=1726")
+    assert resp.status_code == 200
 
-    # last_day == END_DAY -> day = last_day+1 = 2025-01-02 > END_DAY
-    monkeypatch.setattr(m, "get_last_downloaded_day", lambda: date(2025, 1, 1))
-
-    # если случайно вызовется — тест должен упасть
-    monkeypatch.setattr(
-        m,
-        "download_era5_for_day",
-        lambda _d: (_ for _ in ()).throw(
-            AssertionError("download_era5_for_day should NOT be called")
-        ),
-    )
-
-    res = m.run_sync()
-    assert res is None or res is False or res is True
+    data = resp.json()[0]
+    assert data["gas"] == gas
+    assert data["unit"] == api.GAS_UNITS[gas]
+    assert "period" in data
+    assert isinstance(data["mean"], float)
+    assert data["mean"] >= 0
