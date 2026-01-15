@@ -1,11 +1,10 @@
-import json
 import importlib
+import json
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-
 
 # -----------------------------------------
 # MOCK GEOJSON (будем подсовывать через open)
@@ -60,6 +59,7 @@ def api(monkeypatch, tmp_path):
     (tmp_path / "geo1.json").write_text(json.dumps(MOCK_GEOJSON), encoding="utf-8")
 
     import api_all  # noqa
+
     importlib.reload(api_all)
     return api_all
 
@@ -84,9 +84,13 @@ def test_compute_mean_for_o3(api):
 @patch("api_all.list_tiffs", return_value=["data/new_tif/X/X_2025-11-20.tif"])
 @patch("api_all.rioxarray.open_rasterio", return_value=mock_rasterio_array(0.005))
 @patch("builtins.open")
-def test_air_monitoring_points(mock_open, mock_rio, mock_tiffs, mock_exists, api, client, gas):
+def test_air_monitoring_points(
+    mock_open, mock_rio, mock_tiffs, mock_exists, api, client, gas
+):
     # мок open(...) чтобы geojson читался из памяти (на случай если api_all делает open(GEOJSON_PATH))
-    mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(MOCK_GEOJSON)
+    mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(
+        MOCK_GEOJSON
+    )
 
     resp = client.get(f"/api/air_monitoring_points?gas={gas}&region=1726")
     assert resp.status_code == 200
