@@ -44,7 +44,7 @@ OVERWRITE = env_bool("OVERWRITE", default=False)
 candidates = env_list(
     "CANDIDATES",
     default=[
-        "x.xafizov@uzspace.org",
+        r"x.xafizov@uzspace.org",
         r"uzspace\x.xafizov",
         r"uzspace.org\x.xafizov",
     ],
@@ -100,7 +100,7 @@ def upload_file(local_path: Path, remote_path: str) -> None:
     ensure_remote_dir(remote_dir)
 
     if (not OVERWRITE) and remote_exists(remote_path):
-        print(f"⏭️  Exists, skip: {remote_path}")
+        print(f"Exists, skip: {remote_path}")
         return
 
     with open(local_path, "rb") as src:
@@ -108,14 +108,10 @@ def upload_file(local_path: Path, remote_path: str) -> None:
             for chunk in iter(lambda: src.read(1024 * 1024), b""):
                 dst.write(chunk)
 
-    print(f"✅ Uploaded: {local_path} -> {remote_path}")
+    print(f"Uploaded: {local_path} -> {remote_path}")
 
 
 def build_remote_path(local_path: Path, base_dir: Path) -> str:
-    """
-    data   -> \\...\Rasters\sentinel\<relpath>
-    output -> \\...\Rasters\ads\<relpath>
-    """
     rel = local_path.relative_to(base_dir)
     rel_str = str(rel).replace("/", "\\")
 
@@ -130,7 +126,7 @@ def build_remote_path(local_path: Path, base_dir: Path) -> str:
 def upload_tree(base_dir: Path) -> None:
     base_dir = Path(base_dir)
     if not base_dir.exists():
-        print(f"⚠️ Not found: {base_dir}")
+        print(f"Not found: {base_dir}")
         return
 
     uploaded = 0
@@ -158,7 +154,7 @@ def main() -> None:
 
     upload_tree(OUTPUT_DIR)
 
-    print("✅ All done")
+    print("All done")
 
 
 if __name__ == "__main__":
