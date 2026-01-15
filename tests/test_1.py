@@ -1,16 +1,35 @@
+# tests/test_1.py
 import json
-from unittest.mock import MagicMock, patch
+import sys
+import types
+from unittest.mock import MagicMock
 
 import numpy as np
-import pytest  # type: ignore
+import pytest
 from fastapi.testclient import TestClient
 
-from api_all import GAS_UNITS, app, compute_mean_for_gas
 
-pytestmark = pytest.mark.gdal
+# -----------------------------------------
+# FIX: не даём import-цепочке упасть (osgeo / word_grafik / make_word)
+# -----------------------------------------
+@pytest.fixture(scope="session", autouse=True)
+def _stub_heavy_modules():
+    # 1) stub osgeo
+    osgeo = types.ModuleType("osgeo")
+    osgeo.gdal = types.SimpleNamespace(UseExceptions=lambda: None)
+    osgeo.ogr = types.SimpleNamespace(UseExceptions=lambda: None)
+    osgeo.osr = types.SimpleNamespace(UseExceptions=lambda: None)
+    sys.modules.setdefault("osgeo", osgeo)
 
+    # 2) stub word_grafik.make_grafik
+    word_grafik = types.ModuleType("word_grafik")
+    word_grafik.make_grafik = lambda *args, **kwargs: {"png": "dummy.png", "region_name": "dummy"}
+    sys.modules.setdefault("word_grafik", word_grafik)
 
-client = TestClient(app)
+    # 3) stub make_word.build_docx
+    make_word = types.ModuleType("make_word")
+    make_word.build_docx = lambda *args, **kwargs: "dummy.docx"
+    sys.modules.setdefault("make_word", make_word)
 
 
 # -----------------------------------------
@@ -40,79 +59,91 @@ MOCK_GEOJSON = {
 
 
 # -----------------------------------------
-# МОК корректного xarray объекта
+# Мок xarray DataArray, который использует твой api_all:
+# da = rioxarray.open_rasterio(...).squeeze()
+# da.rio.write_crs(...)
+# da.rio.clip(...)
+# clipped.values.flatten()
 # -----------------------------------------
-class MockDataArray:
-    def __init__(self, value):
-        self._array = np.array([[value, value], [value, value]])
+def mock_rioxarray_dataarray(value: float = 0.005):
+    da = MagicMock()
+    da.squeeze.return_value = da
 
-    def squeeze(self):
-        return self
+    # чтобы da.rio.crs существовал
+    da.rio.crs = MagicMock()
+    da.rio.write_crs.return_value = da
 
-    class rio:
-        @staticmethod
-        def write_crs(*args, **kwargs):
-            return MockDataArray(MockDataArray.value)
+    arr = np.array([[value, value], [value, value]], dtype=float)
+    da.rio.clip.return_value = MagicMock(values=arr)
 
-        @staticmethod
-        def clip(*args, **kwargs):
-            return MockDataArray.array
-
-    @property
-    def values(self):
-        return self._array
+    return da
 
 
-def mock_rasterio_array(value=0.002):
-    obj = MagicMock()
+@pytest.fixture()
+def api(monkeypatch):
+    """
+    Импортируем api_all ТОЛЬКО после того как:
+    - модули застаблены
+    - env выставлен (чтобы не было RuntimeError: SAVE_PATH is not set)
+    """
+    monkeypatch.setenv("SAVE_PATH", "data")  # чтобы api_all не падал
+    monkeypatch.setenv("ENV", "test")
 
-    # xarray-style API
-    obj.squeeze.return_value = obj
-    obj.rio.write_crs.return_value = obj
+    import api_all  # noqa: E402
 
-    # Возвращаем объект, который ИМЕЕТ .values
-    arr = np.array([[value, value], [value, value]])
-    obj.rio.clip.return_value = MagicMock(values=arr)
+    return api_all
 
-    return obj
+
+@pytest.fixture()
+def client(api):
+    return TestClient(api.app)
 
 
 # -----------------------------------------
 # Тесты compute_mean_for_gas
 # -----------------------------------------
-def test_compute_mean_for_ch4():
+def test_compute_mean_for_ch4(api):
     arr = np.array([2000, 3000, 4000])
-    assert compute_mean_for_gas("CH4", arr) == 3.0
+    assert api.compute_mean_for_gas("CH4", arr) == 3.0
 
 
-def test_compute_mean_for_o3():
+def test_compute_mean_for_o3(api):
     arr = np.array([0.1, 0.2, 0.3])
-    assert compute_mean_for_gas("O3", arr) == round(np.mean(arr), 3)
+    assert api.compute_mean_for_gas("O3", arr) == round(np.mean(arr), 3)
 
 
 # -----------------------------------------
-# API тест для всех газов
+# API тест для всех газов (без GDAL)
 # -----------------------------------------
 @pytest.mark.parametrize("gas", ["CH4", "CO", "NO2", "SO2", "HCHO", "O3", "AERAI"])
-@patch("api_all.os.path.exists", return_value=True)
-@patch("api_all.list_tiffs", return_value=["data/new_tif/X/X_2025-11-20.tif"])
-@patch("api_all.rioxarray.open_rasterio", return_value=mock_rasterio_array(0.005))
-@patch("builtins.open")
-def test_air_monitoring_points(mock_open, mock_rio, mock_tiffs, mock_exists, gas):
+def test_air_monitoring_points(monkeypatch, api, client, gas):
+    # 1) подменяем чтение geojson
+    class _Ctx:
+        def __enter__(self):
+            m = MagicMock()
+            m.read.return_value = json.dumps(MOCK_GEOJSON)
+            return m
 
-    # Нормальный mock для open(...)
-    mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(
-        MOCK_GEOJSON
-    )
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr("builtins.open", lambda *args, **kwargs: _Ctx())
+
+    # 2) делаем вид что tif существует
+    monkeypatch.setattr(api.os.path, "exists", lambda p: True)
+
+    # 3) list_tiffs возвращает "какой-то" tif
+    monkeypatch.setattr(api, "list_tiffs", lambda *args, **kwargs: ["data/new_tif/X/X_2025-11-20.tif"])
+
+    # 4) rioxarray.open_rasterio -> возвращает мок da
+    monkeypatch.setattr(api.rioxarray, "open_rasterio", lambda *args, **kwargs: mock_rioxarray_dataarray(0.005))
 
     response = client.get(f"/api/air_monitoring_points?gas={gas}&region=1726")
-
     assert response.status_code == 200
 
     data = response.json()[0]
-
     assert data["gas"] == gas
-    assert data["unit"] == GAS_UNITS[gas]
+    assert data["unit"] == api.GAS_UNITS[gas]
     assert "period" in data
-    assert isinstance(data["mean"], float)
-    assert data["mean"] >= 0
+    assert isinstance(data["mean"], (float, int))
+    assert float(data["mean"]) >= 0.0

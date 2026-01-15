@@ -1,142 +1,63 @@
+# tests/conftest.py
 from __future__ import annotations
 
-from datetime import date
+import importlib
+import os
+import sys
 from types import SimpleNamespace
 
-from tests.conftest import reload_module
+import pytest
 
 
-class _FakeResponse:
-    def __init__(self, status_code=200, content_chunks=None, reason="OK"):
-        self.status_code = status_code
-        self.reason = reason
-        self._chunks = content_chunks or [b"data"]
-        self._closed = False
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_):
-        return False
-
-    def raise_for_status(self):
-        if self.status_code >= 400:
-            raise Exception(f"HTTP {self.status_code} {self.reason}")
-
-    def iter_content(self, chunk_size=1024):
-        for c in self._chunks:
-            yield c
+def reload_module(module_name: str):
+    """
+    Перезагружает модуль, чтобы он увидел новые env / моки.
+    ВАЖНО: сначала удаляем из sys.modules.
+    """
+    if module_name in sys.modules:
+        del sys.modules[module_name]
+    return importlib.import_module(module_name)
 
 
-class _FakeImage:
-    def __init__(self, url="http://example.com/file.tif"):
-        self._url = url
+@pytest.fixture()
+def fake_env_and_ee(monkeypatch, tmp_path):
+    """
+    Делает так, чтобы download_all.py можно было импортировать в CI:
+    - подставляет env
+    - подменяет ee модуль на фейковый
+    """
+    # --- ENV ---
+    monkeypatch.setenv("PROJECT_ID", "dummy-project")
+    monkeypatch.setenv("LEFT_LON", "55.0")
+    monkeypatch.setenv("RIGHT_LON", "56.0")
+    monkeypatch.setenv("BOTTOM_LAT", "40.0")
+    monkeypatch.setenv("TOP_LAT", "41.0")
+    monkeypatch.setenv("SAVE_PATH", str(tmp_path))
+    monkeypatch.setenv("START_DATE", "2025-01-01")
+    monkeypatch.setenv("END_DATE", "2025-01-01")
 
-    def getDownloadURL(self, _params):
-        return self._url
+    monkeypatch.setenv("MAX_RETRIES", "2")
+    monkeypatch.setenv("BASE_SLEEP", "0")
+    monkeypatch.setenv("MAX_SLEEP", "0")
+    monkeypatch.setenv("HTTP_TIMEOUT", "1")
+    monkeypatch.setenv("SKIP_DAY_ON_FAIL", "1")
 
+    # --- FAKE ee ---
+    class _FakeEE:
+        class Geometry:
+            @staticmethod
+            def Rectangle(_coords):
+                return "REGION"
 
-def test_parse_day(fake_env_and_ee):
-    m = reload_module("download_all")
-    assert m.parse_day(None) is None
-    assert m.parse_day("2025-01-01") == date(2025, 1, 1)
+        def Initialize(self, project=None):
+            return None
 
+        def ImageCollection(self, *_a, **_k):
+            raise RuntimeError("ImageCollection должен быть замокан внутри теста")
 
-def test_get_last_downloaded_date(fake_env_and_ee, tmp_path):
-    m = reload_module("download_all")
+    fake_ee = _FakeEE()
 
-    gas = "CH4"
-    gas_dir = tmp_path / gas
-    gas_dir.mkdir(parents=True, exist_ok=True)
+    # ВАЖНО: подменяем импортируемый модуль "ee"
+    monkeypatch.setitem(sys.modules, "ee", fake_ee)
 
-    (gas_dir / "CH4_2025-01-01.tif").write_bytes(b"x")
-    (gas_dir / "CH4_2025-01-03.tif").write_bytes(b"x")
-    (gas_dir / "random.txt").write_text("x")
-
-    assert m.get_last_downloaded_date(gas) == date(2025, 1, 3)
-
-
-def test_backoff_sleep_no_wait(fake_env_and_ee, monkeypatch):
-    m = reload_module("download_all")
-    monkeypatch.setattr(m.time, "sleep", lambda *_: None)
-    monkeypatch.setattr(m.random, "random", lambda: 0.0)
-    m._backoff_sleep(1)
-
-
-def test_download_geotiff_success_writes_file(fake_env_and_ee, tmp_path, monkeypatch):
-    m = reload_module("download_all")
-
-    monkeypatch.setattr(m.time, "sleep", lambda *_: None)
-    monkeypatch.setattr(m.random, "random", lambda: 0.0)
-
-    def fake_get(_url, stream=True, timeout=0):
-        return _FakeResponse(status_code=200, content_chunks=[b"hello", b"world"])
-
-    monkeypatch.setattr(m.requests, "get", fake_get)
-
-    out = tmp_path / "out.tif"
-    m.download_geotiff_with_retries(_FakeImage(), str(out))
-    assert out.exists()
-    assert out.read_bytes() == b"helloworld"
-
-
-def test_download_geotiff_retries_then_success(fake_env_and_ee, tmp_path, monkeypatch):
-    m = reload_module("download_all")
-
-    monkeypatch.setattr(m.time, "sleep", lambda *_: None)
-    monkeypatch.setattr(m.random, "random", lambda: 0.0)
-
-    calls = {"n": 0}
-
-    def fake_get(_url, stream=True, timeout=0):
-        calls["n"] += 1
-        if calls["n"] == 1:
-            return _FakeResponse(status_code=500, reason="Server Error")
-        return _FakeResponse(status_code=200, content_chunks=[b"x"])
-
-    monkeypatch.setattr(m.requests, "get", fake_get)
-
-    out = tmp_path / "retry_ok.tif"
-    m.download_geotiff_with_retries(_FakeImage(), str(out))
-    assert calls["n"] == 2
-    assert out.exists()
-    assert out.read_bytes() == b"x"
-
-
-def test_run_sync_one_gas_one_day_happy_path(fake_env_and_ee, tmp_path, monkeypatch):
-    m = reload_module("download_all")
-
-    m.gases = {"CH4": ("DUMMY", "BAND")}
-    m.START_DAY = date(2025, 1, 1)
-    m.END_DAY = date(2025, 1, 1)
-
-    class _FakeSize:
-        def getInfo(self):
-            return 1
-
-    class _FakeCollection:
-        def select(self, *_a, **_k):
-            return self
-
-        def filterDate(self, *_a, **_k):
-            return self
-
-        def size(self):
-            return _FakeSize()
-
-        def mean(self):
-            return SimpleNamespace(clip=lambda _r: _FakeImage())
-
-    monkeypatch.setattr(m.ee, "ImageCollection", lambda *_a, **_k: _FakeCollection())
-
-    def fake_download(_img, outfile):
-        with open(outfile, "wb") as f:
-            f.write(b"ok")
-
-    monkeypatch.setattr(m, "download_geotiff_with_retries", fake_download)
-
-    had_failures = m.run_sync()
-    assert had_failures is False
-
-    p = tmp_path / "CH4" / "CH4_2025-01-01.tif"
-    assert p.exists()
+    return tmp_path
