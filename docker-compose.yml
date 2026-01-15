@@ -166,6 +166,22 @@ services:
       - /dev/disk/:/dev/disk:ro
     networks:
       - sentinel-net
+  
+  send:
+    build: .
+    container_name: sentinel5p-send
+    env_file: .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python -u send.py
+    volumes:
+      - /opt/sentinel5p/data:/data:ro
+      - /opt/sentinel5p/output:/output:ro
+      - /opt/sentinel5p/logs:/app/logs
+    networks:
+      - sentinel-net
+    restart: "no"
+
 
 volumes:
   sonar_pgdata:
