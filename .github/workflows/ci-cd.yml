@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   lint:
-    if: "github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip ci]')"
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip ci]')
     runs-on: self-hosted
     timeout-minutes: 30
 
@@ -83,7 +83,7 @@ jobs:
           severity: HIGH,CRITICAL
 
   test:
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    if: !contains(github.event.head_commit.message, '[skip ci]')
     runs-on: self-hosted
     needs: lint
     timeout-minutes: 45
@@ -105,30 +105,42 @@ jobs:
       - name: Upgrade pip
         run: python -m pip install --upgrade pip
 
-      - name: Install dependencies
+      - name: Install dependencies (NO GDAL from pip)
         run: |
+          # ВАЖНО: GDAL лучше не тянуть через pip на self-hosted без системных либ
+          # Убедись, что в requirements.txt НЕТ строки GDAL
           pip install -r requirements.txt
-          pip install httpx
+          pip install pytest pytest-asyncio pytest-cov httpx
 
-      - name: Run tests (auto-skip gdal if osgeo missing)
-        env:
-          ENV: ci
-          LEFT_LON: "0"
-          RIGHT_LON: "0"
-          TOP_LAT: "0"
-          BOTTOM_LAT: "0"
-          START_DATE: "2025-01-01"
-          END_DATE: "2025-01-02"
+      - name: Prepare CI env vars (so imports don't crash)
+        run: |
+          mkdir -p "${{ github.workspace }}/data"
+          echo "SAVE_PATH=${{ github.workspace }}/data" >> $GITHUB_ENV
+          echo "RASTERS_ROOT=${{ github.workspace }}/data" >> $GITHUB_ENV
+          echo "MINTAQA_SHP=${{ github.workspace }}/polygons/Mintaqa.shp" >> $GITHUB_ENV
+          echo "TUMAN_SHP=${{ github.workspace }}/polygons/Tuman.shp" >> $GITHUB_ENV
+          echo "TEXT_JSON_PATH=${{ github.workspace }}/text.json" >> $GITHUB_ENV
+
+      - name: Decide which tests to run (gdal/ee)
+        id: flags
+        shell: bash
         run: |
           python - << 'PY'
+          import os
+          # gdal present?
           try:
               import osgeo  # noqa
-              print("GDAL_AVAILABLE=true")
+              gdal = True
           except Exception:
-              print("GDAL_AVAILABLE=false")
+              gdal = False
+
+          # earth engine present/configured?
+          ee_ok = bool(os.getenv("EE_PROJECT")) or bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS")) or bool(os.getenv("EARTHENGINE_CREDENTIALS"))
+          print("GDAL_OK=" + ("true" if gdal else "false"))
+          print("EE_OK=" + ("true" if ee_ok else "false"))
           PY
 
-          GDAL_AVAILABLE="$(python - << 'PY'
+          GDAL_OK="$(python - << 'PY'
           try:
               import osgeo  # noqa
               print("true")
@@ -137,12 +149,49 @@ jobs:
           PY
           )"
 
-          if [ "$GDAL_AVAILABLE" = "true" ]; then
-            echo "✅ GDAL available -> running ALL tests"
-            pytest tests/ -v --cov=. --cov-report=xml --cov-report=term
+          EE_OK="false"
+          if [ -n "${EE_PROJECT}" ] || [ -n "${GOOGLE_APPLICATION_CREDENTIALS}" ] || [ -n "${EARTHENGINE_CREDENTIALS}" ]; then
+            EE_OK="true"
+          fi
+
+          echo "gdal_ok=$GDAL_OK" >> $GITHUB_OUTPUT
+          echo "ee_ok=$EE_OK" >> $GITHUB_OUTPUT
+
+      - name: Run tests
+        env:
+          ENV: ci
+          LEFT_LON: "0"
+          RIGHT_LON: "0"
+          TOP_LAT: "0"
+          BOTTOM_LAT: "0"
+          START_DATE: "2025-01-01"
+          END_DATE: "2025-01-02"
+          SAVE_PATH: "${{ env.SAVE_PATH }}"
+        run: |
+          MARK_EXPR=""
+
+          if [ "${{ steps.flags.outputs.gdal_ok }}" != "true" ]; then
+            echo "⚠️ GDAL NOT available -> skip gdal tests"
+            MARK_EXPR="not gdal"
           else
-            echo "⚠️ GDAL NOT available -> skipping gdal tests"
-            pytest tests/ -v -m "not gdal" --cov=. --cov-report=xml --cov-report=term
+            echo "✅ GDAL available"
+          fi
+
+          if [ "${{ steps.flags.outputs.ee_ok }}" != "true" ]; then
+            echo "⚠️ EarthEngine NOT configured -> skip ee tests"
+            if [ -n "$MARK_EXPR" ]; then
+              MARK_EXPR="$MARK_EXPR and not ee"
+            else
+              MARK_EXPR="not ee"
+            fi
+          else
+            echo "✅ EarthEngine configured"
+          fi
+
+          if [ -n "$MARK_EXPR" ]; then
+            pytest tests/ -v -m "$MARK_EXPR" --cov=. --cov-report=xml --cov-report=term
+          else
+            pytest tests/ -v --cov=. --cov-report=xml --cov-report=term
           fi
 
       - name: Upload coverage
@@ -152,7 +201,7 @@ jobs:
           path: coverage.xml
 
   sonarqube:
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    if: !contains(github.event.head_commit.message, '[skip ci]')
     runs-on: self-hosted
     needs: test
     timeout-minutes: 30
@@ -178,7 +227,7 @@ jobs:
             -Dsonar.login=${SONAR_TOKEN}
 
   build_and_push:
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    if: !contains(github.event.head_commit.message, '[skip ci]')
     runs-on: self-hosted
     needs: sonarqube
     timeout-minutes: 60
@@ -203,7 +252,7 @@ jobs:
           docker push ${{ secrets.DOCKER_USER }}/sentinel5p-api:latest
 
   deploy:
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    if: !contains(github.event.head_commit.message, '[skip ci]')
     runs-on: self-hosted
     needs: build_and_push
     timeout-minutes: 30
