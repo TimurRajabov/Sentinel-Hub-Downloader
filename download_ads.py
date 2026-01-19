@@ -1,15 +1,14 @@
 import os
-import zipfile
 import shutil
 import time
-from datetime import datetime, date, timedelta
-
-import cdsapi
-import xarray as xr
-import rioxarray
-from dotenv import load_dotenv
+import zipfile
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import cdsapi
+import rioxarray
+import xarray as xr
+from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
 
@@ -50,7 +49,11 @@ TOP_LAT = env_float("TOP_LAT")
 
 DATASET_ID = env_str("CAMS_DATASET_ID", "cams-global-atmospheric-composition-forecasts")
 REQUEST_TYPE = env_str("CAMS_REQUEST_TYPE", "analysis")
-TIMES = [t.strip() for t in env_str("CAMS_TIMES", "00:00,06:00,12:00,18:00").split(",") if t.strip()]
+TIMES = [
+    t.strip()
+    for t in env_str("CAMS_TIMES", "00:00,06:00,12:00,18:00").split(",")
+    if t.strip()
+]
 FORMAT = env_str("CAMS_FORMAT", "netcdf_zip")
 LEADTIME_HOUR = env_str("CAMS_LEADTIME_HOUR", "0")
 
@@ -149,7 +152,9 @@ def collapse_to_2d_latlon(da: xr.DataArray) -> xr.DataArray:
     return da
 
 
-def retrieve_with_retry(client: cdsapi.Client, dataset: str, request: dict, target: str):
+def retrieve_with_retry(
+    client: cdsapi.Client, dataset: str, request: dict, target: str
+):
     for attempt in range(1, RETRY_MAX + 1):
         try:
             client.retrieve(dataset, request, target)
@@ -162,7 +167,14 @@ def retrieve_with_retry(client: cdsapi.Client, dataset: str, request: dict, targ
     raise RuntimeError("Max retries exceeded")
 
 
-def download_month(client: cdsapi.Client, gas_label: str, ads_var: str, short_var: str, m_start: date, m_end: date):
+def download_month(
+    client: cdsapi.Client,
+    gas_label: str,
+    ads_var: str,
+    short_var: str,
+    m_start: date,
+    m_end: date,
+):
     # директория газа
     out_dir = os.path.join(OUTPUT_ROOT, gas_label)
     os.makedirs(out_dir, exist_ok=True)
@@ -189,7 +201,9 @@ def download_month(client: cdsapi.Client, gas_label: str, ads_var: str, short_va
         "area": area,
     }
 
-    print(f"\n=== {gas_label} | month {m_start.strftime('%Y-%m')} ({len(dates)} days) ===")
+    print(
+        f"\n=== {gas_label} | month {m_start.strftime('%Y-%m')} ({len(dates)} days) ==="
+    )
     retrieve_with_retry(client, DATASET_ID, request, tmp_zip)
 
     os.makedirs(tmp_dir, exist_ok=True)
@@ -234,6 +248,7 @@ def download_month(client: cdsapi.Client, gas_label: str, ads_var: str, short_va
 
 def numpy_datetime64(day_str: str):
     import numpy as np
+
     return np.datetime64(day_str)
 
 

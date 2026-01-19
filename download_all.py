@@ -8,7 +8,6 @@ import requests
 from dotenv import load_dotenv
 from requests.exceptions import RequestException, Timeout
 
-
 load_dotenv()
 
 PROJECT_ID = os.getenv("PROJECT_ID")
@@ -20,8 +19,8 @@ TOP_LAT = float(os.getenv("TOP_LAT"))
 
 SAVE_PATH = os.getenv("SAVE_PATH", "/data")
 
-START_DATE = os.getenv("START_DATE") 
-END_DATE = os.getenv("END_DATE")      
+START_DATE = os.getenv("START_DATE")
+END_DATE = os.getenv("END_DATE")
 
 
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "6"))
@@ -167,7 +166,6 @@ def run_sync() -> bool:
                 .filterDate(str(current_date), str(next_date))
             )
 
-
             if col.size().getInfo() == 0:
                 print("    ⚠ Нет данных")
                 current_date = next_date
@@ -207,7 +205,9 @@ if __name__ == "__main__":
 
         if had_failures:
             sleep_s = int(COOLDOWN_HOURS_ON_FAILURE * 3600)
-            print(f"Были ошибки. Повторим через {COOLDOWN_HOURS_ON_FAILURE} часов ({sleep_s} сек)")
+            print(
+                f"Были ошибки. Повторим через {COOLDOWN_HOURS_ON_FAILURE} часов ({sleep_s} сек)"
+            )
             time.sleep(sleep_s)
         else:
             print(f"Проход завершён. Пауза {SLEEP_BETWEEN_PASSES_SEC} сек")

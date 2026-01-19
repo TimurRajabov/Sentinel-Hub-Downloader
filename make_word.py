@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-import os
 import json
+import os
 import tempfile
 from datetime import datetime
 
 from docx import Document
-from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Inches, Pt
 
 from screen import make_screens
 from word_grafik import make_grafik
@@ -16,8 +16,18 @@ FONT_NAME = "Times New Roman"
 FONT_SIZE = 14
 
 UZ_MONTHS = {
-    1: "yanvar", 2: "fevral", 3: "mart", 4: "aprel", 5: "may", 6: "iyun",
-    7: "iyul", 8: "avgust", 9: "sentabr", 10: "oktabr", 11: "noyabr", 12: "dekabr"
+    1: "yanvar",
+    2: "fevral",
+    3: "mart",
+    4: "aprel",
+    5: "may",
+    6: "iyun",
+    7: "iyul",
+    8: "avgust",
+    9: "sentabr",
+    10: "oktabr",
+    11: "noyabr",
+    12: "dekabr",
 }
 
 
@@ -55,13 +65,15 @@ def _p_left(doc: Document, text: str):
         r.font.size = Pt(FONT_SIZE)
     return p
 
+
 def _p_justify(doc: Document, text: str):
     p = doc.add_paragraph(text)
-    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY  
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     for r in p.runs:
         r.font.name = FONT_NAME
         r.font.size = Pt(FONT_SIZE)
     return p
+
 
 def _add_picture_center(doc: Document, path: str, width=PIC_W):
     p = doc.add_paragraph()
@@ -72,8 +84,7 @@ def _add_picture_center(doc: Document, path: str, width=PIC_W):
 
 def _add_multiline(doc: Document, text: str):
     for part in [t.strip() for t in (text or "").split("\n\n") if t.strip()]:
-        _p_justify(doc, part)   
-
+        _p_justify(doc, part)
 
 
 def build_docx(
@@ -116,7 +127,7 @@ def build_docx(
                 date_str=date_str,
                 parent_cod=parent_cod,
                 rasters_root=rasters_root,
-                vector_path=mintaqa_shp,         # <-- один и тот же shp
+                vector_path=mintaqa_shp,  # <-- один и тот же shp
                 base_vector_path=tuman_shp,
                 out_dir=tmpdir,
             )
@@ -127,7 +138,7 @@ def build_docx(
                 date_str=date_str,
                 parent_cod=parent_cod,
                 rasters_root=rasters_root,
-                mintaqa_shp=mintaqa_shp,         # <-- тот же shp
+                mintaqa_shp=mintaqa_shp,  # <-- тот же shp
                 out_dir=tmpdir,
                 lookback_days=count_gase,
             )
@@ -137,13 +148,15 @@ def build_docx(
             _p_center_bold(
                 doc,
                 f"{idx}. Respublika va {region_name} kesimida {_uz_date(date_str)} holatiga ko‘ra "
-                f"{gas_name} yuqori bo‘lgan hududlar."
+                f"{gas_name} yuqori bo‘lgan hududlar.",
             )
 
             _p_left(doc, "Respublika kesimida:")
             _add_picture_center(doc, screens["mintaqa"])
 
-            _p_left(doc, f"So‘nggi {count_gase} kun bo‘yicha {gas} o‘rtacha qiymat grafigi:")
+            _p_left(
+                doc, f"So‘nggi {count_gase} kun bo‘yicha {gas} o‘rtacha qiymat grafigi:"
+            )
             _add_picture_center(doc, grafik["png"])
 
             doc.add_page_break()

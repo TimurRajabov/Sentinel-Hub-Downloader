@@ -2,14 +2,15 @@
 import os
 from datetime import datetime
 
-import numpy as np
 import matplotlib
+import numpy as np
+
 matplotlib.use("Agg")
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap, Normalize, ListedColormap
+from matplotlib.colors import LinearSegmentedColormap, ListedColormap, Normalize
 from matplotlib.patches import Rectangle
 from osgeo import gdal, ogr, osr
-import matplotlib.colors as mcolors
 
 gdal.UseExceptions()
 ogr.UseExceptions()
@@ -46,10 +47,19 @@ PCLIP_HIGH = 98.0
 
 def _spectrum_cmap():
     stops = [
-        "#0b1a8f", "#0033ff", "#0080ff", "#00ffff",
-        "#66ff00", "#ffff00", "#ff9900", "#ff0000",
+        "#0b1a8f",
+        "#0033ff",
+        "#0080ff",
+        "#00ffff",
+        "#66ff00",
+        "#ffff00",
+        "#ff9900",
+        "#ff0000",
     ]
-    cols = [(int(s[1:3], 16)/255, int(s[3:5], 16)/255, int(s[5:7], 16)/255) for s in stops]
+    cols = [
+        (int(s[1:3], 16) / 255, int(s[3:5], 16) / 255, int(s[5:7], 16) / 255)
+        for s in stops
+    ]
     return LinearSegmentedColormap.from_list("spectrum", cols, N=256)
 
 
@@ -152,15 +162,29 @@ def _add_legend(fig, ax, cmap, vmin_raw, vmax_raw, title, scale=1.0):
 
     nd_ax = fig.add_axes([left + w + pad, bottom, box_w, h])
     nd_ax.axis("off")
-    nd_ax.add_patch(Rectangle((0, 0), 1, 1, transform=nd_ax.transAxes,
-                              facecolor=ZERO_COLOR, edgecolor="none"))
-    fig.text(left + w + pad + box_w + 0.004, bottom + h / 2,
-             "NoData", va="center", ha="left", fontsize=9)
+    nd_ax.add_patch(
+        Rectangle(
+            (0, 0),
+            1,
+            1,
+            transform=nd_ax.transAxes,
+            facecolor=ZERO_COLOR,
+            edgecolor="none",
+        )
+    )
+    fig.text(
+        left + w + pad + box_w + 0.004,
+        bottom + h / 2,
+        "NoData",
+        va="center",
+        ha="left",
+        fontsize=9,
+    )
 
 
-def make_screens(gas, date_str, parent_cod,
-                 rasters_root, vector_path, base_vector_path,
-                 out_dir):
+def make_screens(
+    gas, date_str, parent_cod, rasters_root, vector_path, base_vector_path, out_dir
+):
 
     gas = gas.upper()
     os.makedirs(out_dir, exist_ok=True)
@@ -170,7 +194,7 @@ def make_screens(gas, date_str, parent_cod,
     band = ds.GetRasterBand(1)
     arr = band.ReadAsArray().astype(np.float32)
 
-    zero_mask = (arr == 0.0)
+    zero_mask = arr == 0.0
 
     valid = np.isfinite(arr) & (~zero_mask)
     if not np.any(valid):
@@ -203,7 +227,11 @@ def make_screens(gas, date_str, parent_cod,
     bds = ogr.Open(base_vector_path)
     blyr = bds.GetLayer(0)
     b_srs = _srs_axis(blyr.GetSpatialRef(), fallback_epsg=3857)
-    bct = osr.CoordinateTransformation(b_srs, ras_srs) if not b_srs.IsSame(ras_srs) else None
+    bct = (
+        osr.CoordinateTransformation(b_srs, ras_srs)
+        if not b_srs.IsSame(ras_srs)
+        else None
+    )
 
     def clamp_view(ax, x0, x1, y0, y1):
         xmin = max(0.0, min(x0, x1))
@@ -220,12 +248,18 @@ def make_screens(gas, date_str, parent_cod,
     def render_one(mode, out_png, base_w, highlight):
         fig, ax = plt.subplots(figsize=(10, 8))
         ax.imshow(norm, cmap=cmap, interpolation=DISPLAY_INTERP_MAIN, zorder=0)
-        ax.imshow(zero_layer, cmap=zero_cmap, interpolation=DISPLAY_INTERP_ZERO, zorder=2)
+        ax.imshow(
+            zero_layer, cmap=zero_cmap, interpolation=DISPLAY_INTERP_ZERO, zorder=2
+        )
 
         vds = ogr.Open(vector_path)
         lyr = vds.GetLayer(0)
         vec_srs = _srs_axis(lyr.GetSpatialRef(), fallback_epsg=3857)
-        ct = osr.CoordinateTransformation(vec_srs, ras_srs) if not vec_srs.IsSame(ras_srs) else None
+        ct = (
+            osr.CoordinateTransformation(vec_srs, ras_srs)
+            if not vec_srs.IsSame(ras_srs)
+            else None
+        )
 
         if mode == "feature":
             feat = _get_feature_by_parent_cod(lyr, parent_cod)
@@ -239,7 +273,10 @@ def make_screens(gas, date_str, parent_cod,
 
         padx = (xmax - xmin) * ZOOM_PAD
         pady = (ymax - ymin) * ZOOM_PAD
-        xmin -= padx; xmax += padx; ymin -= pady; ymax += pady
+        xmin -= padx
+        xmax += padx
+        ymin -= pady
+        ymax += pady
 
         x0, y0 = gdal.ApplyGeoTransform(inv_gt, xmin, ymin)
         x1, y1 = gdal.ApplyGeoTransform(inv_gt, xmax, ymax)
