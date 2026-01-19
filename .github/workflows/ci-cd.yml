@@ -197,12 +197,10 @@ jobs:
 
       - name: Prepare deployment
         run: |
-          mkdir -p /opt/sentinel5p
-          cp -f docker-compose.yml /opt/sentinel5p/
+          sudo mkdir -p /opt/sentinel5p
+          sudo cp -f docker-compose.yml /opt/sentinel5p/
 
-          # ВАЖНО: не оставляй пустой .env, иначе сервисы с переменными упадут.
-          # Добавь сюда нужные переменные проекта через GitHub Secrets.
-          cat > /opt/sentinel5p/.env << 'EOF'
+          sudo tee /opt/sentinel5p/.env > /dev/null << 'EOF'
           # ENV for sentinel5p project
           # MINIO_ROOT_USER=...
           # MINIO_ROOT_PASSWORD=...
@@ -211,10 +209,10 @@ jobs:
       - name: Deploy with Docker Compose
         run: |
           cd /opt/sentinel5p
-          docker compose down || true
-          docker compose up -d --build
-          docker compose ps
-          docker image prune -af --filter "until=24h"
+          sudo docker compose down || true
+          sudo docker compose up -d --build
+          sudo docker compose ps
+          sudo docker image prune -af --filter "until=24h"
 
       - name: Health Check
         run: |
@@ -222,6 +220,6 @@ jobs:
           if curl -f http://localhost:8121/docs > /dev/null 2>&1; then
             echo "Backend is healthy!"
           else
-            docker logs sentinel5p-api --tail 80 || true
+            sudo docker logs sentinel5p-api --tail 80 || true
             exit 1
           fi
