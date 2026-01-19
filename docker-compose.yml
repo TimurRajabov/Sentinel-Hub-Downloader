@@ -123,6 +123,8 @@ services:
     env_file: .env
     environment:
       - PYTHONUNBUFFERED=1
+      - DOCKER_USERNAME=${DOCKER_USERNAME}
+      - DOCKER_TOKEN=${DOCKER_TOKEN}
     command: python -u send.py
     volumes:
       - /opt/sentinel5p/data:/data:ro
