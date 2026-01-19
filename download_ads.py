@@ -6,7 +6,6 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import cdsapi
-import rioxarray
 import xarray as xr
 from dotenv import load_dotenv
 
