@@ -1,13 +1,15 @@
 import os
+import zipfile
 import shutil
 import time
-import zipfile
-from datetime import date, datetime, timedelta
+from datetime import datetime, date, timedelta
+
+import cdsapi
+import xarray as xr
+import rioxarray
+from dotenv import load_dotenv
 from pathlib import Path
 
-import cdsapi  # type: ignore
-import xarray as xr  # type: ignore
-from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
 
@@ -48,19 +50,16 @@ TOP_LAT = env_float("TOP_LAT")
 
 DATASET_ID = env_str("CAMS_DATASET_ID", "cams-global-atmospheric-composition-forecasts")
 REQUEST_TYPE = env_str("CAMS_REQUEST_TYPE", "analysis")
-TIMES = [
-    t.strip()
-    for t in env_str("CAMS_TIMES", "00:00,06:00,12:00,18:00").split(",")
-    if t.strip()
-]
+TIMES = [t.strip() for t in env_str("CAMS_TIMES", "00:00,06:00,12:00,18:00").split(",") if t.strip()]
 FORMAT = env_str("CAMS_FORMAT", "netcdf_zip")
 LEADTIME_HOUR = env_str("CAMS_LEADTIME_HOUR", "0")
 
-START_DAY_1 = env_date("CAMS_TART_DAY")
-END_DAY_1 = env_date("CAMS_ND_DAY")
+START_DAY = env_date("CAMS_START_DAY")
+END_DAY = env_date("CAMS_END_DAY")
 
+# retry settings (можешь вынести в env)
 RETRY_MAX = int(env_str("CAMS_RETRY_MAX", "8"))
-SLEEP_BASE = int(env_str("CAMS_SLEEP_BASE", "10"))
+SLEEP_BASE = int(env_str("CAMS_SLEEP_BASE", "10"))  # seconds
 
 
 GASES = {
@@ -150,32 +149,25 @@ def collapse_to_2d_latlon(da: xr.DataArray) -> xr.DataArray:
     return da
 
 
-def retrieve_with_retry(
-    client: cdsapi.Client, dataset: str, request: dict, target: str
-):
+def retrieve_with_retry(client: cdsapi.Client, dataset: str, request: dict, target: str):
     for attempt in range(1, RETRY_MAX + 1):
         try:
             client.retrieve(dataset, request, target)
             return
         except Exception as e:
-            wait = min(600, SLEEP_BASE * (2 ** (attempt - 1)))
-            print(f"retrieve failed (attempt {attempt}/{RETRY_MAX}): {e}")
-            print(f"sleep {wait}s then retry...")
+            wait = min(600, SLEEP_BASE * (2 ** (attempt - 1)))  # up to 10 min
+            print(f"❌ retrieve failed (attempt {attempt}/{RETRY_MAX}): {e}")
+            print(f"⏳ sleep {wait}s then retry...")
             time.sleep(wait)
     raise RuntimeError("Max retries exceeded")
 
 
-def download_month(
-    client: cdsapi.Client,
-    gas_label: str,
-    ads_var: str,
-    short_var: str,
-    m_start: date,
-    m_end: date,
-):
+def download_month(client: cdsapi.Client, gas_label: str, ads_var: str, short_var: str, m_start: date, m_end: date):
+    # директория газа
     out_dir = os.path.join(OUTPUT_ROOT, gas_label)
     os.makedirs(out_dir, exist_ok=True)
 
+    # marker: если месяц уже обработан
     marker = os.path.join(out_dir, f"_DONE_{m_start.strftime('%Y-%m')}.txt")
     if os.path.exists(marker):
         print(f"✔ [{gas_label}] month already done: {m_start.strftime('%Y-%m')}")
@@ -197,9 +189,7 @@ def download_month(
         "area": area,
     }
 
-    print(
-        f"\n=== {gas_label} | month {m_start.strftime('%Y-%m')} ({len(dates)} days) ==="
-    )
+    print(f"\n=== {gas_label} | month {m_start.strftime('%Y-%m')} ({len(dates)} days) ===")
     retrieve_with_retry(client, DATASET_ID, request, tmp_zip)
 
     os.makedirs(tmp_dir, exist_ok=True)
@@ -208,11 +198,14 @@ def download_month(
         with xr.open_dataset(nc_path, engine="netcdf4") as ds:
             da = pick_dataarray(ds, ads_var=ads_var, short_var=short_var)
 
+            # если есть time, сгруппируем по дням и сохраним GeoTIFF на каждый день
             if "time" in da.dims:
+                # time -> date
                 day_index = da["time"].dt.floor("D")
                 da = da.assign_coords(day=("time", day_index.data))
                 daily = da.groupby("day").mean("time")
             else:
+                # нет time — считаем что уже дневные данные
                 daily = da
 
             for d in daterange(m_start, m_end):
@@ -224,12 +217,13 @@ def download_month(
                 if "day" in daily.dims:
                     sel = daily.sel(day=numpy_datetime64(day_str))
                 else:
+                    # fallback: одно поле на весь месяц/файл
                     sel = daily
 
                 sel = sel.load()
                 da2d = collapse_to_2d_latlon(sel)
                 da2d.rio.to_raster(out_tif)
-                print(f"[{gas_label}] saved {out_tif}")
+                print(f"✅ [{gas_label}] saved {out_tif}")
 
         with open(marker, "w", encoding="utf-8") as f:
             f.write(f"done {datetime.now().isoformat()}\n")
@@ -240,34 +234,34 @@ def download_month(
 
 def numpy_datetime64(day_str: str):
     import numpy as np
-
     return np.datetime64(day_str)
 
 
 def main():
     os.makedirs(OUTPUT_ROOT, exist_ok=True)
     print("OUTPUT_ROOT:", OUTPUT_ROOT)
-    print("DATE RANGE:", START_DAY_1, "->", END_DAY_1)
+    print("DATE RANGE:", START_DAY, "->", END_DAY)
     print("BBOX:", TOP_LAT, LEFT_LON, BOTTOM_LAT, RIGHT_LON)
     print("DATASET:", DATASET_ID, "TYPE:", REQUEST_TYPE, "TIMES:", TIMES)
 
     client = cdsapi.Client(timeout=600, retry_max=3)
 
-    cur = month_start(START_DAY_1)
-    last = month_start(END_DAY_1)
+    cur = month_start(START_DAY)
+    last = month_start(END_DAY)
 
     while cur <= last:
         m_s = cur
         m_e = month_end(cur)
 
-        if m_s < START_DAY_1:
-            m_s = START_DAY_1
-        if m_e > END_DAY_1:
-            m_e = END_DAY_1
+        if m_s < START_DAY:
+            m_s = START_DAY
+        if m_e > END_DAY:
+            m_e = END_DAY
 
         for label, (ads_var, short_var) in GASES.items():
             download_month(client, label, ads_var, short_var, m_s, m_e)
 
+        # next month
         if cur.month == 12:
             cur = date(cur.year + 1, 1, 1)
         else:

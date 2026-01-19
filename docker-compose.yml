@@ -31,7 +31,7 @@ services:
       - PYTHONUNBUFFERED=1
     command: python -u download_ads.py
     volumes:
-      - /opt/sentinel5p/output:/output
+      - /home/temur/Documents/Work/goo/output:/output
       - /opt/sentinel5p/logs:/app/logs
       - /opt/sentinel5p/.cdsapirc:/root/.cdsapirc:ro
     networks:

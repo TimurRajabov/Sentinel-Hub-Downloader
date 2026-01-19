@@ -15,7 +15,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ✅ Ставим python bindings GDAL (osgeo) в /usr/local site-packages
 RUN GDAL_VER="$(gdal-config --version)" && \
     pip install --no-cache-dir "GDAL==${GDAL_VER}"
 
