@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import List, Optional, Iterable, Set, Tuple
+from typing import Iterable, List, Optional, Set, Tuple
 
 import smbclient
 from dotenv import load_dotenv
@@ -22,11 +22,14 @@ def env_bool(name: str, default: bool = False) -> bool:
     return v.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
-def env_list(name: str, default: Optional[List[str]] = None, sep: str = ",") -> List[str]:
+def env_list(
+    name: str, default: Optional[List[str]] = None, sep: str = ","
+) -> List[str]:
     v = os.getenv(name)
     if not v:
         return default or []
     return [x.strip() for x in v.split(sep) if x.strip()]
+
 
 SERVER = env_required("SMB_SERVER")
 PASSWORD = os.getenv("SMB_PASSWORD", "")
@@ -46,7 +49,17 @@ candidates = env_list(
         r"uzspace.org\x.xafizov",
     ],
 )
-SENTINEL_TYPES: Set[str] = {"AERAI", "CH4", "CO", "HCHO", "NO2", "O3", "SO2", "temperature", "wind"}
+SENTINEL_TYPES: Set[str] = {
+    "AERAI",
+    "CH4",
+    "CO",
+    "HCHO",
+    "NO2",
+    "O3",
+    "SO2",
+    "temperature",
+    "wind",
+}
 ADS_TYPES: Set[str] = {"CO", "HCHO", "NO2", "O3", "SO2"}
 
 
@@ -128,17 +141,18 @@ def _first_level_folder(local_path: Path, base_dir: Path) -> Optional[str]:
     return parts[0]
 
 
-def build_remote_path(local_path: Path, base_dir: Path, target_root: str) -> Optional[str]:
+def build_remote_path(
+    local_path: Path, base_dir: Path, target_root: str
+) -> Optional[str]:
     rel = local_path.relative_to(base_dir)
     parts = rel.parts
     if len(parts) < 2:
-        return None 
+        return None
 
     type_folder = parts[0]
-    filename = local_path.name 
+    filename = local_path.name
 
     return _norm_unc(f"{REMOTE_BASE}\\{target_root}\\{type_folder}\\{filename}")
-
 
 
 def iter_files(base_dir: Path) -> Iterable[Path]:
@@ -147,7 +161,9 @@ def iter_files(base_dir: Path) -> Iterable[Path]:
             yield p
 
 
-def upload_tree_mapped(base_dir: Path, target_root: str, allowed_types: Set[str]) -> None:
+def upload_tree_mapped(
+    base_dir: Path, target_root: str, allowed_types: Set[str]
+) -> None:
     base_dir = Path(base_dir)
     if not base_dir.exists():
         print(f"⚠️ Not found: {base_dir}")
@@ -181,7 +197,9 @@ def upload_tree_mapped(base_dir: Path, target_root: str, allowed_types: Set[str]
         upload_file(p, remote)
         uploaded += 1
 
-    print(f"✅ {base_dir} -> {target_root} done. uploaded={uploaded}, skipped={skipped}, ignored={ignored}")
+    print(
+        f"✅ {base_dir} -> {target_root} done. uploaded={uploaded}, skipped={skipped}, ignored={ignored}"
+    )
 
 
 def main() -> None:
