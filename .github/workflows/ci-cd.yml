@@ -161,7 +161,7 @@ jobs:
           if [ -z "${{ secrets.DOCKER_USERNAME }}" ]; then echo "❌ DOCKER_USERNAME is EMPTY"; exit 1; else echo "✅ DOCKER_USERNAME is set"; fi
           if [ -z "${{ secrets.DOCKER_TOKEN }}" ]; then echo "❌ DOCKER_TOKEN is EMPTY"; exit 1; else echo "✅ DOCKER_TOKEN is set"; fi
 
-      # ✅ FIX for self-hosted runners where Docker uses "pass" credential store and it's not initialized
+      
       - name: Disable docker credential store (self-hosted fix)
         run: |
           mkdir -p ~/.docker
@@ -197,22 +197,19 @@ jobs:
 
       - name: Prepare deployment
         run: |
-          sudo mkdir -p /opt/sentinel5p
-          sudo cp -f docker-compose.yml /opt/sentinel5p/
+          mkdir -p /opt/sentinel5p
+          cp -f docker-compose.yml /opt/sentinel5p/
 
-          sudo tee /opt/sentinel5p/.env > /dev/null << 'EOF'
-          # ENV for sentinel5p project
-          # MINIO_ROOT_USER=...
-          # MINIO_ROOT_PASSWORD=...
+          tee /opt/sentinel5p/.env > /dev/null << 'EOF'
           EOF
 
       - name: Deploy with Docker Compose
         run: |
           cd /opt/sentinel5p
-          sudo docker compose down || true
-          sudo docker compose up -d --build
-          sudo docker compose ps
-          sudo docker image prune -af --filter "until=24h"
+          docker compose down || true
+          docker compose up -d --build
+          docker compose ps
+          docker image prune -af --filter "until=24h"
 
       - name: Health Check
         run: |
@@ -220,6 +217,6 @@ jobs:
           if curl -f http://localhost:8121/docs > /dev/null 2>&1; then
             echo "Backend is healthy!"
           else
-            sudo docker logs sentinel5p-api --tail 80 || true
+            docker logs sentinel5p-api --tail 80 || true
             exit 1
           fi
