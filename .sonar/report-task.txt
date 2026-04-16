@@ -1,6 +1,0 @@
-projectKey=sentinel5
-serverUrl=http://localhost:9104
-serverVersion=25.11.0.114957
-dashboardUrl=http://localhost:9104/dashboard?id=sentinel5
-ceTaskId=444bd8fc-4067-48fa-a666-7abc9eac6903
-ceTaskUrl=http://localhost:9104/api/ce/task?id=444bd8fc-4067-48fa-a666-7abc9eac6903
