@@ -1,0 +1,19 @@
+services:
+
+  sentinel-hub:
+    build: .
+    container_name: sentinel-hub
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # результаты скачивания сохраняются на хост-машину
+      - ./data:/data
+      # база данных — сохраняется между перезапусками
+      - ./sentinel_hub.db:/app/sentinel_hub.db
+      # загруженные geojson файлы
+      - ./uploads:/app/uploads
+    env_file:
+      - .env
+    environment:
+      - SAVE_PATH=/data

@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Database
+*.db
+*.sqlite3
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Uploads & generated data
+uploads/
+data/
+output/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Earth Engine credentials
+earthengine_credentials.json
+
+# Sonar
+.scannerwork/
+.sonar/
+sonar-project.properties
+
+# Coverage / tests
+.coverage
+coverage.ini
+htmlcov/
+.pytest_cache/
+
+# Temp files
+*.part
+*.tmp
+RUN_STATE.json
+
+# Docker
+*.dockerignore
+
+# Office docs
+*.docx
+*.xlsx

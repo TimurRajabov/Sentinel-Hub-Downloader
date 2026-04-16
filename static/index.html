@@ -1,0 +1,1430 @@
+<!DOCTYPE html>
+<html lang="ru" x-data="app()" x-init="init()">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sentinel Hub Downloader</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet Draw -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            zinc: { 925: '#111115', 875: '#1c1c22' },
+          },
+          boxShadow: {
+            'glass': '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)',
+            'glow': '0 0 20px rgba(99,102,241,0.25)',
+          },
+        }
+      }
+    }
+  </script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+
+    * { -webkit-font-smoothing: antialiased; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #0d0d12;
+      background-image:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99,102,241,0.12) 0%, transparent 60%);
+    }
+
+    /* ---- SCROLLBAR ---- */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2d2d3a; border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3d3d4e; }
+
+    /* ---- MAP ---- */
+    #map { height: 100%; border-radius: 16px; }
+    .leaflet-container { background: #1a1a24; }
+
+    /* ---- GLASS CARD ---- */
+    .card {
+      background: rgba(22, 22, 32, 0.8);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 16px;
+      padding: 1.5rem;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+
+    /* ---- INPUTS ---- */
+    .input {
+      width: 100%;
+      background: rgba(10,10,16,0.8);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #e2e8f0;
+      border-radius: 10px;
+      padding: 0.55rem 0.85rem;
+      font-size: 0.875rem;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      outline: none;
+    }
+    .input:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.18);
+    }
+    .input::placeholder { color: #4a4a5e; }
+
+    .label {
+      display: block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: #6b7280;
+      margin-bottom: 0.4rem;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    /* ---- TABS ---- */
+    .nav-tab {
+      padding: 0.45rem 1rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.18s;
+      position: relative;
+      color: #6b7280;
+      border: 1px solid transparent;
+    }
+    .nav-tab:hover:not(.active) {
+      color: #c4c4d4;
+      background: rgba(255,255,255,0.04);
+    }
+    .nav-tab.active {
+      color: #e0e0f0;
+      background: rgba(99,102,241,0.15);
+      border-color: rgba(99,102,241,0.3);
+      box-shadow: 0 0 12px rgba(99,102,241,0.2);
+    }
+
+    /* ---- BUTTONS ---- */
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: white;
+      font-weight: 600;
+      padding: 0.6rem 1.25rem;
+      border-radius: 10px;
+      font-size: 0.875rem;
+      transition: all 0.18s;
+      box-shadow: 0 2px 12px rgba(99,102,241,0.35);
+      border: 1px solid rgba(99,102,241,0.4);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #7577f3 0%, #5f56f0 100%);
+      box-shadow: 0 4px 20px rgba(99,102,241,0.5);
+      transform: translateY(-1px);
+    }
+    .btn-primary:active:not(:disabled) { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #9ca3af;
+      font-weight: 500;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      transition: all 0.15s;
+    }
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.08);
+      color: #e2e8f0;
+      border-color: rgba(255,255,255,0.15);
+    }
+
+    .btn-danger {
+      background: rgba(239,68,68,0.12);
+      border: 1px solid rgba(239,68,68,0.25);
+      color: #f87171;
+      font-weight: 500;
+      padding: 0.35rem 0.75rem;
+      border-radius: 7px;
+      font-size: 0.75rem;
+      transition: all 0.15s;
+    }
+    .btn-danger:hover {
+      background: rgba(239,68,68,0.22);
+      border-color: rgba(239,68,68,0.4);
+    }
+
+    /* ---- STATUS BADGES ---- */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0.2rem 0.65rem;
+      border-radius: 99px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .status-pending  { background: rgba(100,116,139,0.2); color: #94a3b8; border: 1px solid rgba(100,116,139,0.3); }
+    .status-running  { background: rgba(99,102,241,0.2);  color: #a5b4fc; border: 1px solid rgba(99,102,241,0.35); }
+    .status-done     { background: rgba(16,185,129,0.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3); }
+    .status-error    { background: rgba(239,68,68,0.15);  color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+    .status-cancelling { background: rgba(245,158,11,0.15); color: #fcd34d; border: 1px solid rgba(245,158,11,0.3); }
+    .status-cancelled  { background: rgba(75,85,99,0.2);  color: #9ca3af;  border: 1px solid rgba(75,85,99,0.3); }
+
+    /* ---- LOG BOX ---- */
+    .log-box {
+      background: #070709;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 10px;
+      padding: 1rem;
+      font-size: 0.7rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: #4ade80;
+      overflow-y: auto;
+      max-height: 320px;
+      white-space: pre-wrap;
+      line-height: 1.6;
+    }
+
+    /* ---- STEP INDICATOR ---- */
+    .step-indicator {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      font-size: 0.7rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      transition: all 0.2s;
+    }
+    .step-active   { background: rgba(99,102,241,0.25); border: 1.5px solid #6366f1; color: #a5b4fc; }
+    .step-done     { background: rgba(16,185,129,0.2);  border: 1.5px solid #10b981; color: #6ee7b7; }
+    .step-inactive { background: rgba(255,255,255,0.04); border: 1.5px solid rgba(255,255,255,0.1); color: #4b5563; }
+
+    /* ---- PULSE DOT ---- */
+    .pulse-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: currentColor;
+      animation: pulseDot 1.5s ease-in-out infinite;
+    }
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.35; transform: scale(0.6); }
+    }
+
+    /* ---- DRAG DROP ZONE ---- */
+    .drop-zone {
+      border: 2px dashed rgba(99,102,241,0.25);
+      border-radius: 12px;
+      padding: 1.5rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: rgba(99,102,241,0.03);
+    }
+    .drop-zone:hover, .drop-zone.dragging {
+      border-color: rgba(99,102,241,0.55);
+      background: rgba(99,102,241,0.07);
+    }
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ---- PRODUCT CARD ---- */
+    .product-card {
+      padding: 0.75rem;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.07);
+      cursor: pointer;
+      transition: all 0.18s;
+      background: rgba(255,255,255,0.02);
+    }
+    .product-card:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.12); }
+    .product-card.selected {
+      background: rgba(99,102,241,0.12);
+      border-color: rgba(99,102,241,0.4);
+      box-shadow: 0 0 16px rgba(99,102,241,0.15);
+    }
+
+    /* ---- DIVIDER ---- */
+    .divider { height: 1px; background: rgba(255,255,255,0.06); margin: 1rem 0; }
+
+    /* ---- RANGE INPUT ---- */
+    input[type="range"] {
+      -webkit-appearance: none;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.1);
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: #6366f1;
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(99,102,241,0.5);
+    }
+
+    /* ---- HEADER GLOW ---- */
+    .header-logo-glow {
+      box-shadow: 0 0 20px rgba(99,102,241,0.4), 0 0 40px rgba(99,102,241,0.15);
+    }
+
+    /* ---- JOB ROW ---- */
+    .job-card {
+      background: rgba(18,18,26,0.9);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 14px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .job-card:hover { border-color: rgba(255,255,255,0.12); }
+
+    /* ---- CHECKBOX ---- */
+    input[type="checkbox"] {
+      accent-color: #6366f1;
+      width: 15px; height: 15px;
+    }
+
+    /* ---- FILE INPUT ---- */
+    input[type="file"]::file-selector-button {
+      background: rgba(99,102,241,0.15);
+      color: #a5b4fc;
+      border: 1px solid rgba(99,102,241,0.3);
+      border-radius: 7px;
+      padding: 0.3rem 0.8rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      transition: all 0.15s;
+      margin-right: 0.5rem;
+    }
+    input[type="file"]::file-selector-button:hover {
+      background: rgba(99,102,241,0.25);
+    }
+
+    /* smooth tab transitions */
+    [x-cloak] { display: none; }
+    .fade-enter { animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+
+<body class="min-h-screen text-slate-200">
+
+  <!-- ===== HEADER ===== -->
+  <header class="sticky top-0 z-50" style="background: rgba(10,10,16,0.85); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.06);">
+    <div class="max-w-screen-xl mx-auto px-6 py-3 flex items-center justify-between">
+
+      <!-- Logo -->
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center header-logo-glow flex-shrink-0"
+             style="background: linear-gradient(135deg, #6366f1, #4338ca);">
+          <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
+          </svg>
+        </div>
+        <div>
+          <div class="text-sm font-semibold text-white tracking-tight">Sentinel Hub</div>
+          <div class="text-xs" style="color: #5b5b7a;">GEE · Sentinel-2 · RGB/NDVI</div>
+        </div>
+      </div>
+
+      <!-- Right: tabs + running indicator -->
+      <div class="flex items-center gap-4">
+        <!-- Running indicator -->
+        <div x-show="runningCount > 0" class="flex items-center gap-2 text-indigo-400 text-xs font-medium">
+          <span class="pulse-dot"></span>
+          <span x-text="runningCount + ' задач'"></span>
+        </div>
+
+        <!-- Nav tabs -->
+        <nav class="flex items-center gap-1 p-1 rounded-xl" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);">
+          <button class="nav-tab" :class="{active: tab==='new'}" @click="tab='new'">
+            <span class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+              </svg>
+              Новый запрос
+            </span>
+          </button>
+
+          <button class="nav-tab" :class="{active: tab==='jobs'}" @click="tab='jobs'; loadJobs()">
+            <span class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+              </svg>
+              Задачи
+              <span x-show="runningCount > 0"
+                    class="text-xs px-1.5 py-0.5 rounded-full font-bold"
+                    style="background: rgba(99,102,241,0.3); color: #a5b4fc; font-size: 0.6rem;"
+                    x-text="runningCount"></span>
+            </span>
+          </button>
+
+          <button class="nav-tab" :class="{active: tab==='accounts'}" @click="tab='accounts'; loadAccounts()">
+            <span class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+              </svg>
+              Аккаунты
+              <span x-show="accounts.length === 0"
+                    class="text-xs px-1 rounded-full font-bold"
+                    style="background: rgba(239,68,68,0.3); color: #fca5a5; font-size: 0.6rem;">!</span>
+            </span>
+          </button>
+
+          <button class="nav-tab" :class="{active: tab==='settings'}" @click="tab='settings'; loadSettings()">
+            <span class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+              </svg>
+              Настройки
+            </span>
+          </button>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="max-w-screen-xl mx-auto px-6 py-7">
+
+    <!-- ====================== TAB: NEW REQUEST ====================== -->
+    <div x-show="tab==='new'" x-cloak>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- LEFT: form -->
+        <div class="space-y-4">
+
+          <!-- Account picker -->
+          <div class="card" style="border-color: rgba(99,102,241,0.2); background: rgba(99,102,241,0.04);">
+            <div class="flex items-center gap-2.5 mb-3">
+              <svg class="w-4 h-4" style="color: #818cf8;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+              </svg>
+              <span class="text-sm font-semibold text-slate-100">Аккаунт GEE</span>
+            </div>
+
+            <div x-show="accounts.length === 0"
+                 class="flex items-center gap-3 text-sm rounded-lg p-3"
+                 style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5;">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+              </svg>
+              <span>Нет аккаунтов.
+                <a class="underline cursor-pointer font-medium" @click="tab='accounts'; loadAccounts()">Добавьте аккаунт →</a>
+              </span>
+            </div>
+
+            <div x-show="accounts.length > 0">
+              <label class="label">Выбрать аккаунт</label>
+              <select class="input" x-model="form.account_id">
+                <template x-for="acc in accounts" :key="acc.id">
+                  <option :value="acc.id"
+                          x-text="acc.name + (acc.is_default ? ' ★' : '') + '  ·  ' + acc.project_id"></option>
+                </template>
+              </select>
+            </div>
+          </div>
+
+          <!-- Step 1: AOI -->
+          <div class="card">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="step-indicator" :class="step>=1 ? 'step-active' : 'step-inactive'">1</div>
+              <div>
+                <div class="text-sm font-semibold text-slate-100">Область интереса (AOI)</div>
+                <div class="text-xs" style="color: #4b5563;">GeoJSON или ZIP Shapefile</div>
+              </div>
+            </div>
+
+            <!-- Drop zone -->
+            <div class="drop-zone relative"
+                 @dragover.prevent="$el.classList.add('dragging')"
+                 @dragleave="$el.classList.remove('dragging')"
+                 @drop.prevent="$el.classList.remove('dragging'); handleDrop($event)">
+              <input type="file" accept=".geojson,.json,.zip" @change="handleFile($event)" />
+              <div x-show="!aoi.name" class="pointer-events-none">
+                <svg class="w-8 h-8 mx-auto mb-2" style="color: #374151;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                </svg>
+                <div class="text-sm" style="color: #6b7280;">Перетащите файл или <span style="color: #818cf8;">нажмите для выбора</span></div>
+                <div class="text-xs mt-1" style="color: #374151;">.geojson · .json · .zip</div>
+              </div>
+              <div x-show="aoi.name" class="pointer-events-none flex items-center justify-center gap-3">
+                <svg class="w-5 h-5" style="color: #6ee7b7;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <div class="text-left">
+                  <div class="text-sm font-medium text-slate-100" x-text="aoi.name"></div>
+                  <div class="text-xs" style="color: #4b5563;" x-show="aoi.features" x-text="aoi.features + ' объект(ов)'"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-4">
+              <label class="label">Фильтр по региону</label>
+              <input class="input" x-model="form.shape_name" placeholder="Tashkent Region (необязательно)" />
+            </div>
+          </div>
+
+          <!-- Step 2: Date -->
+          <div class="card">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="step-indicator" :class="step>=2 ? 'step-active' : 'step-inactive'">2</div>
+              <div>
+                <div class="text-sm font-semibold text-slate-100">Дата</div>
+                <div class="text-xs" style="color: #4b5563;">Конкретная дата или из GeoJSON</div>
+              </div>
+            </div>
+
+            <!-- Mode switcher -->
+            <div class="flex gap-1 mb-4 p-1 rounded-xl" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);">
+              <button @click="dateMode='single'"
+                      class="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                      :style="dateMode==='single'
+                        ? 'background: rgba(99,102,241,0.2); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.35);'
+                        : 'color: #6b7280;'">
+                Одна дата
+              </button>
+              <button @click="dateMode='range'"
+                      class="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                      :style="dateMode==='range'
+                        ? 'background: rgba(99,102,241,0.2); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.35);'
+                        : 'color: #6b7280;'">
+                Диапазон
+              </button>
+              <button @click="dateMode='geojson'"
+                      class="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                      :style="dateMode==='geojson'
+                        ? 'background: rgba(99,102,241,0.2); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.35);'
+                        : 'color: #6b7280;'">
+                Из GeoJSON
+              </button>
+            </div>
+
+            <!-- Single date -->
+            <div x-show="dateMode==='single'">
+              <label class="label">Дата (ДД.ММ.ГГГГ)</label>
+              <input class="input" x-model="form.date" placeholder="13.04.2026"
+                     pattern="\d{2}\.\d{2}\.\d{4}" />
+            </div>
+
+            <!-- Date range -->
+            <div x-show="dateMode==='range'" class="space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="label">Начало (ДД.ММ.ГГГГ)</label>
+                  <input class="input" x-model="form.date_start" placeholder="01.01.2023" />
+                </div>
+                <div>
+                  <label class="label">Конец (ДД.ММ.ГГГГ)</label>
+                  <input class="input" x-model="form.date_end" placeholder="31.12.2023" />
+                </div>
+              </div>
+              <div>
+                <label class="label">Шаг (дней)</label>
+                <input type="number" min="1" max="365" class="input" x-model="form.date_step" />
+                <p class="text-xs mt-1" style="color: #4b5563;">
+                  Например шаг <strong style="color:#818cf8;">30</strong> = каждые 30 дней.
+                  Итого дат: <strong style="color:#a5b4fc;" x-text="calcDateCount()"></strong>
+                </p>
+              </div>
+            </div>
+
+            <!-- From GeoJSON -->
+            <div x-show="dateMode==='geojson'"
+                 class="flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs"
+                 style="background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.15); color: #818cf8;">
+              <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              Будет использовано поле <code class="mx-1 font-mono font-bold">date</code> из каждого feature в GeoJSON
+            </div>
+          </div>
+
+          <!-- Step 3: Product -->
+          <div class="card">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="step-indicator" :class="step>=3 ? 'step-active' : 'step-inactive'">3</div>
+              <div>
+                <div class="text-sm font-semibold text-slate-100">Продукт</div>
+                <div class="text-xs" style="color: #4b5563;">Тип выходных данных</div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <template x-for="p in products" :key="p.value">
+                <div class="product-card" :class="form.product===p.value ? 'selected' : ''"
+                     @click="form.product = p.value">
+                  <div class="text-xs font-bold mb-0.5" :style="form.product===p.value ? 'color: #a5b4fc;' : 'color: #d1d5db;'" x-text="p.label"></div>
+                  <div class="text-xs" style="color: #6b7280;" x-text="p.desc"></div>
+                </div>
+              </template>
+            </div>
+
+            <div x-show="form.product==='Custom'" class="mt-4">
+              <label class="label">Выберите каналы</label>
+              <div class="flex flex-wrap gap-1.5 mt-1">
+                <template x-for="b in allBands" :key="b">
+                  <button @click="toggleBand(b)"
+                          class="px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all"
+                          :style="form.custom_bands.includes(b)
+                            ? 'background: rgba(99,102,241,0.25); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.4);'
+                            : 'background: rgba(255,255,255,0.04); color: #6b7280; border: 1px solid rgba(255,255,255,0.08);'"
+                          x-text="b"></button>
+                </template>
+              </div>
+              <p class="text-xs mt-2" style="color: #4b5563;">
+                Выбрано: <span style="color: #d1d5db;" x-text="form.custom_bands.join(', ') || '—'"></span>
+              </p>
+            </div>
+          </div>
+
+          <!-- Step 4: Filters -->
+          <div class="card">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="step-indicator" :class="step>=4 ? 'step-active' : 'step-inactive'">4</div>
+              <div>
+                <div class="text-sm font-semibold text-slate-100">Фильтры и параметры</div>
+                <div class="text-xs" style="color: #4b5563;">Облачность, окна поиска</div>
+              </div>
+            </div>
+
+            <div class="space-y-4">
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <label class="label" style="margin-bottom:0;">Макс. облачность</label>
+                  <span class="text-xs font-semibold" style="color: #818cf8;" x-text="form.max_cloud + '%'"></span>
+                </div>
+                <input type="range" min="0" max="100" x-model="form.max_cloud" class="w-full mt-1" />
+                <div class="flex justify-between text-xs mt-1" style="color: #374151;">
+                  <span>0%</span><span>50%</span><span>100%</span>
+                </div>
+              </div>
+
+              <div class="divider"></div>
+
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="label">Окно main (±дней)</label>
+                  <input type="number" min="0" max="60" class="input" x-model="form.win_main" />
+                </div>
+                <div>
+                  <label class="label">Окно fill (±дней)</label>
+                  <input type="number" min="0" max="120" class="input" x-model="form.win_fill" />
+                </div>
+              </div>
+
+              <label class="flex items-center gap-3 cursor-pointer group">
+                <input type="checkbox" x-model="form.only_missing" />
+                <div>
+                  <div class="text-sm font-medium text-slate-200 group-hover:text-white transition-colors">Только отсутствующие</div>
+                  <div class="text-xs" style="color: #4b5563;">Пропустить уже скачанные тайлы</div>
+                </div>
+              </label>
+
+              <label class="flex items-center gap-3 cursor-pointer group">
+                <input type="checkbox" x-model="form.single_raster" />
+                <div>
+                  <div class="text-sm font-medium text-slate-200 group-hover:text-white transition-colors">Единый растр</div>
+                  <div class="text-xs" style="color: #4b5563;">Объединить все полигоны в один GeoTIFF</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Step 5: Submit -->
+          <div class="card" style="background: linear-gradient(135deg, rgba(22,22,36,0.9), rgba(14,14,22,0.9)); border-color: rgba(99,102,241,0.2);">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="step-indicator step-active">5</div>
+              <div>
+                <div class="text-sm font-semibold text-slate-100">Сводка и запуск</div>
+                <div class="text-xs" style="color: #4b5563;">Проверьте параметры</div>
+              </div>
+            </div>
+
+            <div class="rounded-xl p-4 text-sm space-y-2.5 mb-4" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05);">
+              <div class="flex justify-between items-center">
+                <span style="color: #6b7280;">AOI</span>
+                <span class="text-slate-100 text-xs font-medium" x-text="aoi.name || '—'"></span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span style="color: #6b7280;">Дата</span>
+                <span class="text-slate-100 text-xs font-medium"
+                      x-text="dateMode==='geojson' ? 'из GeoJSON' :
+                               dateMode==='range' ? (form.date_start && form.date_end ? form.date_start + ' → ' + form.date_end + ' (×' + calcDateCount() + ')' : '—') :
+                               (form.date || '—')"></span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span style="color: #6b7280;">Продукт</span>
+                <span class="px-2 py-0.5 rounded-full text-xs font-bold" style="background: rgba(99,102,241,0.2); color: #a5b4fc;" x-text="form.product"></span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span style="color: #6b7280;">Облачность</span>
+                <span class="text-slate-100 text-xs font-medium" x-text="'≤ ' + form.max_cloud + '%'"></span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span style="color: #6b7280;">Окно</span>
+                <span class="text-slate-100 text-xs font-mono" x-text="'main ±' + form.win_main + 'd · fill ±' + form.win_fill + 'd'"></span>
+              </div>
+            </div>
+
+            <div x-show="submitError"
+                 class="mb-3 flex items-start gap-2 p-3 rounded-xl text-sm"
+                 style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5;">
+              <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <span x-text="submitError"></span>
+            </div>
+
+            <div x-show="submitSuccess"
+                 class="mb-3 flex items-center gap-2 p-3 rounded-xl text-sm"
+                 style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); color: #6ee7b7;">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <span>Задача создана!
+                <a class="underline cursor-pointer font-semibold ml-1" @click="tab='jobs'; loadJobs()">Перейти к задачам →</a>
+              </span>
+            </div>
+
+            <button class="btn-primary w-full py-3 text-sm flex items-center justify-center gap-2"
+                    @click="submitJob()"
+                    :disabled="submitting || !aoi.file">
+              <template x-if="!submitting">
+                <span class="flex items-center gap-2">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  Запустить скачивание
+                </span>
+              </template>
+              <template x-if="submitting">
+                <span class="flex items-center gap-2">
+                  <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                  Отправка...
+                </span>
+              </template>
+            </button>
+          </div>
+
+        </div>
+
+        <!-- RIGHT: map -->
+        <div class="sticky top-24 self-start">
+          <div class="overflow-hidden" style="height: 620px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.07); box-shadow: 0 8px 32px rgba(0,0,0,0.4);">
+            <div id="map" style="height:100%;"></div>
+          </div>
+          <p class="text-xs text-center mt-2" style="color: #374151;">Загруженная геометрия отобразится на карте</p>
+        </div>
+
+      </div>
+    </div>
+
+
+    <!-- ====================== TAB: JOBS ====================== -->
+    <div x-show="tab==='jobs'" x-cloak>
+
+      <div class="flex items-center justify-between mb-5">
+        <div>
+          <h2 class="text-base font-semibold text-white">Задачи</h2>
+          <p class="text-xs mt-0.5" style="color: #4b5563;" x-text="jobs.length + ' всего'"></p>
+        </div>
+        <button class="btn-secondary flex items-center gap-2" @click="loadJobs()">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Обновить
+        </button>
+      </div>
+
+      <!-- Empty state -->
+      <div x-show="jobs.length===0"
+           class="flex flex-col items-center justify-center py-24"
+           style="color: #374151;">
+        <svg class="w-14 h-14 mb-4 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        </svg>
+        <div class="text-sm font-medium" style="color: #6b7280;">Нет задач</div>
+        <div class="text-xs mt-1">Создайте новый запрос</div>
+      </div>
+
+      <div class="space-y-3">
+        <template x-for="job in jobs" :key="job.id">
+          <div class="job-card">
+
+            <!-- Header row -->
+            <div class="flex items-center justify-between px-5 py-3.5" style="border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);">
+              <div class="flex items-center gap-3">
+                <span class="font-mono text-xs" style="color: #374151;" x-text="'#' + job.id"></span>
+                <span class="status-badge" :class="'status-' + job.status">
+                  <span x-show="job.status==='running'" class="pulse-dot"></span>
+                  <span x-text="statusLabel(job.status)"></span>
+                </span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs" style="color: #374151;" x-text="formatDate(job.created_at)"></span>
+                <button x-show="job.status==='running' || job.status==='pending'"
+                        class="btn-danger" @click="cancelJob(job.id)">Отмена</button>
+                <button x-show="job.status!=='running' && job.status!=='pending'"
+                        class="btn-secondary" @click="deleteJob(job.id)">Удалить</button>
+              </div>
+            </div>
+
+            <!-- Params grid -->
+            <div class="px-5 py-3.5 grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div>
+                <div class="text-xs mb-1" style="color: #4b5563;">GeoJSON</div>
+                <div class="text-xs font-medium text-slate-200 truncate"
+                     x-text="job.params.geojson_path ? job.params.geojson_path.split('/').pop() : '—'"></div>
+              </div>
+              <div>
+                <div class="text-xs mb-1" style="color: #4b5563;">Дата</div>
+                <div class="text-xs font-medium text-slate-200" x-text="job.params.date || 'из GeoJSON'"></div>
+              </div>
+              <div>
+                <div class="text-xs mb-1" style="color: #4b5563;">Продукт</div>
+                <span class="inline-block text-xs font-bold px-2 py-0.5 rounded-full"
+                      style="background: rgba(99,102,241,0.15); color: #818cf8;"
+                      x-text="job.params.product || 'RGB'"></span>
+              </div>
+              <div>
+                <div class="text-xs mb-1" style="color: #4b5563;">Облачность</div>
+                <div class="text-xs font-medium text-slate-200" x-text="'≤ ' + (job.params.max_cloud || '—') + '%'"></div>
+              </div>
+            </div>
+
+            <!-- Error -->
+            <div x-show="job.error" class="px-5 pb-3">
+              <div class="flex items-start gap-2 text-xs p-3 rounded-lg"
+                   style="background: rgba(239,68,68,0.07); border: 1px solid rgba(239,68,68,0.15); color: #fca5a5; font-family: 'JetBrains Mono', monospace;">
+                <svg class="w-3.5 h-3.5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span x-text="job.error"></span>
+              </div>
+            </div>
+
+            <!-- Result dir -->
+            <div x-show="job.result_dir" class="px-5 pb-3">
+              <div class="flex items-center gap-2 text-xs" style="color: #6ee7b7;">
+                <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                </svg>
+                <span class="font-mono truncate" x-text="job.result_dir"></span>
+              </div>
+            </div>
+
+            <!-- Log accordion -->
+            <div style="border-top: 1px solid rgba(255,255,255,0.05);">
+              <button class="w-full px-5 py-2.5 text-xs flex items-center gap-2 hover:bg-white/[0.02] transition-colors"
+                      style="color: #4b5563;"
+                      @click="job._showLog = !job._showLog; if(job._showLog) loadLog(job)">
+                <svg class="w-3 h-3 transition-transform duration-200" :class="job._showLog ? 'rotate-90' : ''"
+                     fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                </svg>
+                <span :style="job._showLog ? 'color: #818cf8;' : ''">Журнал выполнения</span>
+              </button>
+              <div x-show="job._showLog" class="px-5 pb-4">
+                <div class="log-box" x-text="job._log || '(пусто)'"></div>
+              </div>
+            </div>
+
+          </div>
+        </template>
+      </div>
+    </div>
+
+
+    <!-- ====================== TAB: ACCOUNTS ====================== -->
+    <div x-show="tab==='accounts'" x-cloak>
+      <div class="max-w-2xl">
+
+        <div class="flex items-center justify-between mb-5">
+          <div>
+            <h2 class="text-base font-semibold text-white">Аккаунты Google Earth Engine</h2>
+            <p class="text-xs mt-0.5" style="color: #4b5563;" x-text="accounts.length + ' аккаунт(ов)'"></p>
+          </div>
+          <button class="btn-secondary flex items-center gap-2" @click="showAddAccount=!showAddAccount">
+            <template x-if="!showAddAccount">
+              <span class="flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                </svg>
+                Добавить
+              </span>
+            </template>
+            <template x-if="showAddAccount">
+              <span class="flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+                Отмена
+              </span>
+            </template>
+          </button>
+        </div>
+
+        <!-- Add account form -->
+        <div x-show="showAddAccount"
+             class="card mb-5"
+             style="border-color: rgba(99,102,241,0.25); background: rgba(99,102,241,0.04);">
+          <div class="flex items-center gap-2 mb-4">
+            <div class="w-6 h-6 rounded-lg flex items-center justify-center" style="background: rgba(99,102,241,0.2);">
+              <svg class="w-3.5 h-3.5" style="color: #818cf8;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+              </svg>
+            </div>
+            <h3 class="font-semibold text-sm text-slate-100">Новый аккаунт</h3>
+          </div>
+
+          <div class="space-y-4">
+            <div>
+              <label class="label">Название</label>
+              <input class="input" x-model="newAcc.name" placeholder="Мой GEE аккаунт" />
+            </div>
+
+            <div>
+              <label class="label">Тип аккаунта</label>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="product-card" :class="newAcc.type==='service_account' ? 'selected' : ''"
+                     @click="newAcc.type='service_account'">
+                  <div class="text-xs font-bold mb-0.5" :style="newAcc.type==='service_account' ? 'color: #a5b4fc;' : 'color: #d1d5db;'">Service Account</div>
+                  <div class="text-xs" style="color: #6b7280;">JSON ключ сервисного аккаунта</div>
+                </div>
+                <div class="product-card" :class="newAcc.type==='user' ? 'selected' : ''"
+                     @click="newAcc.type='user'">
+                  <div class="text-xs font-bold mb-0.5" :style="newAcc.type==='user' ? 'color: #a5b4fc;' : 'color: #d1d5db;'">User Account</div>
+                  <div class="text-xs" style="color: #6b7280;">Файл credentials от earthengine</div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label class="label">GEE Project ID</label>
+              <input class="input font-mono" x-model="newAcc.project_id"
+                     placeholder="my-gee-project" />
+              <p class="text-xs mt-1" style="color: #374151;">Необязательно — возьмётся из JSON</p>
+            </div>
+
+            <div x-show="newAcc.type==='service_account'">
+              <label class="label">JSON ключ сервисного аккаунта</label>
+              <input type="file" accept=".json" @change="handleCredFile($event)"
+                     class="w-full text-sm cursor-pointer" style="color: #9ca3af;" />
+              <p class="text-xs mt-1.5" style="color: #374151;">
+                Google Cloud Console → IAM → Service Accounts → Keys
+              </p>
+            </div>
+
+            <div x-show="newAcc.type==='user'">
+              <label class="label">Содержимое ~/.config/earthengine/credentials</label>
+              <textarea class="input font-mono resize-none" rows="4" x-model="newAcc.credentials_text"
+                        placeholder='{"client_id": "...", "refresh_token": "...", ...}'></textarea>
+              <p class="text-xs mt-1.5" style="color: #374151;">
+                Запустите <code class="font-mono" style="color: #818cf8;">earthengine authenticate</code> и скопируйте файл credentials
+              </p>
+            </div>
+
+            <div x-show="addAccError"
+                 class="flex items-start gap-2 p-3 rounded-xl text-sm"
+                 style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5;">
+              <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <span x-text="addAccError"></span>
+            </div>
+
+            <button class="btn-primary w-full flex items-center justify-center gap-2"
+                    @click="addAccount()" :disabled="addAccLoading">
+              <svg x-show="!addAccLoading" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+              </svg>
+              <svg x-show="addAccLoading" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              <span x-text="addAccLoading ? 'Сохранение...' : 'Добавить аккаунт'"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Empty state -->
+        <div x-show="accounts.length===0 && !showAddAccount"
+             class="flex flex-col items-center justify-center py-20"
+             style="color: #374151;">
+          <svg class="w-14 h-14 mb-4 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+          </svg>
+          <div class="text-sm font-medium" style="color: #6b7280;">Нет аккаунтов</div>
+          <div class="text-xs mt-1">Нажмите <strong class="text-slate-300">+ Добавить</strong></div>
+        </div>
+
+        <!-- Accounts list -->
+        <div class="space-y-2">
+          <template x-for="acc in accounts" :key="acc.id">
+            <div class="job-card">
+              <div class="flex items-center justify-between px-5 py-4">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all"
+                       :style="acc.is_default
+                         ? 'background: linear-gradient(135deg, #6366f1, #4338ca); box-shadow: 0 0 16px rgba(99,102,241,0.35);'
+                         : 'background: rgba(255,255,255,0.05);'">
+                    <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-semibold text-white" x-text="acc.name"></span>
+                      <span x-show="acc.is_default"
+                            class="text-xs px-2 py-0.5 rounded-full font-bold"
+                            style="background: rgba(99,102,241,0.2); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.3);">★ основной</span>
+                    </div>
+                    <div class="flex items-center gap-2 mt-0.5 text-xs" style="color: #6b7280;">
+                      <span x-text="acc.type === 'service_account' ? 'Service Account' : 'User Account'"></span>
+                      <span style="color: #2d2d3a;">·</span>
+                      <span class="font-mono" x-text="acc.project_id || '(нет project_id)'"></span>
+                    </div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button x-show="!acc.is_default"
+                          class="btn-secondary text-xs"
+                          @click="setDefaultAccount(acc.id)">
+                    Сделать основным
+                  </button>
+                  <button class="btn-danger" @click="removeAccount(acc.id)">Удалить</button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+      </div>
+    </div>
+
+
+    <!-- ====================== TAB: SETTINGS ====================== -->
+    <div x-show="tab==='settings'" x-cloak>
+      <div class="max-w-xl">
+
+        <div class="mb-5">
+          <h2 class="text-base font-semibold text-white">Настройки</h2>
+          <p class="text-xs mt-0.5" style="color: #4b5563;">Глобальные параметры загрузки</p>
+        </div>
+
+        <div class="card space-y-5">
+
+          <div>
+            <label class="label">Google Earth Engine Project ID</label>
+            <input class="input font-mono" x-model="settings.project_id" placeholder="my-gee-project" />
+          </div>
+
+          <div>
+            <label class="label">Путь для сохранения результатов</label>
+            <div class="relative">
+              <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style="color: #374151;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+              </svg>
+              <input class="input font-mono pl-9" x-model="settings.save_path" placeholder="/data" />
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="label">Разрешение (м/пикс)</label>
+              <input type="number" min="1" max="100" class="input" x-model="settings.scale_m" />
+            </div>
+            <div>
+              <label class="label">Макс. воркеров</label>
+              <input type="number" min="1" max="16" class="input" x-model="settings.max_workers" />
+            </div>
+            <div>
+              <label class="label">Облачность по умолчанию (%)</label>
+              <input type="number" min="0" max="100" class="input" x-model="settings.max_cloud" />
+            </div>
+            <div>
+              <label class="label">Окно main (дней)</label>
+              <input type="number" min="0" max="60" class="input" x-model="settings.win_main" />
+            </div>
+            <div>
+              <label class="label">Окно fill (дней)</label>
+              <input type="number" min="0" max="120" class="input" x-model="settings.win_fill" />
+            </div>
+            <div>
+              <label class="label">Папка GeoJSON (DATES_DIR)</label>
+              <input class="input font-mono" x-model="settings.dates_dir" placeholder="/path/to/geojson" />
+            </div>
+          </div>
+
+          <div x-show="settingsSaved"
+               class="flex items-center gap-2 p-3 rounded-xl text-sm"
+               style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); color: #6ee7b7;">
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Настройки сохранены
+          </div>
+
+          <button class="btn-primary w-full flex items-center justify-center gap-2" @click="saveSettings()">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+            </svg>
+            Сохранить настройки
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+
+  <!-- ===== SCRIPT ===== -->
+  <script>
+    function app() {
+      return {
+        tab: 'new',
+        step: 1,
+        dateMode: 'single',
+        form: {
+          date: '',
+          date_start: '',
+          date_end: '',
+          date_step: '30',
+          shape_name: '',
+          product: 'RGB',
+          custom_bands: [],
+          max_cloud: '20',
+          win_main: '3',
+          win_fill: '15',
+          only_missing: false,
+          single_raster: false,
+          account_id: '',
+        },
+        accounts: [],
+        showAddAccount: false,
+        newAcc: { name: '', type: 'service_account', project_id: '', credentials_text: '', credentials_file: null },
+        addAccError: '',
+        addAccLoading: false,
+        aoi: { file: null, name: '', features: 0 },
+        products: [
+          { value: 'RGB',     label: 'RGB',       desc: 'B4-B3-B2 визуализация' },
+          { value: 'RGB+NIR', label: 'RGB + NIR',  desc: '4-канальный продукт' },
+          { value: 'NDVI',    label: 'NDVI',       desc: 'Вегетационный индекс' },
+          { value: 'Custom',  label: 'Custom',     desc: 'Выбор каналов вручную' },
+        ],
+        allBands: ['B1','B2','B3','B4','B5','B6','B7','B8','B8A','B9','B11','B12'],
+        submitting: false,
+        submitError: '',
+        submitSuccess: false,
+        jobs: [],
+        runningCount: 0,
+        settings: {},
+        settingsSaved: false,
+        _map: null,
+        _drawnLayer: null,
+
+        // ---- lifecycle ----
+        init() {
+          this.$nextTick(() => this.initMap());
+          this.loadJobs();
+          this.loadAccounts();
+          setInterval(() => this.pollRunning(), 4000);
+        },
+
+        // ---- map ----
+        initMap() {
+          const m = L.map('map', { zoomControl: true }).setView([41.3, 64.6], 5);
+          // CartoDB Dark Matter
+          L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 19,
+          }).addTo(m);
+          this._map = m;
+        },
+
+        showGeojsonOnMap(geojson) {
+          if (!this._map) return;
+          if (this._drawnLayer) { this._map.removeLayer(this._drawnLayer); }
+          try {
+            this._drawnLayer = L.geoJSON(geojson, {
+              style: { color: '#818cf8', weight: 2, fillOpacity: 0.12, fillColor: '#6366f1' },
+            }).addTo(this._map);
+            this._map.fitBounds(this._drawnLayer.getBounds(), { padding: [30, 30] });
+          } catch (e) { console.warn('map error', e); }
+        },
+
+        // ---- file handling ----
+        handleFile(event) {
+          const file = event.target.files[0];
+          if (!file) return;
+          this._setFile(file);
+        },
+
+        handleDrop(event) {
+          const file = event.dataTransfer.files[0];
+          if (!file) return;
+          this._setFile(file);
+        },
+
+        _setFile(file) {
+          this.aoi.file = file;
+          this.aoi.name = file.name;
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const gj = JSON.parse(e.target.result);
+              if (gj.type === 'FeatureCollection') {
+                this.aoi.features = (gj.features || []).length;
+              }
+              this.showGeojsonOnMap(gj);
+            } catch(err) { /* zip or unreadable */ }
+          };
+          reader.readAsText(file);
+        },
+
+        calcDateCount() {
+          try {
+            const parse = s => { const [d,m,y] = s.split('.'); return new Date(y, m-1, d); };
+            const s = parse(this.form.date_start);
+            const e = parse(this.form.date_end);
+            const step = Math.max(1, parseInt(this.form.date_step) || 1);
+            if (isNaN(s) || isNaN(e) || e < s) return '—';
+            return Math.floor((e - s) / (step * 86400000)) + 1;
+          } catch { return '—'; }
+        },
+
+        toggleBand(b) {
+          const idx = this.form.custom_bands.indexOf(b);
+          if (idx >= 0) this.form.custom_bands.splice(idx, 1);
+          else this.form.custom_bands.push(b);
+        },
+
+        // ---- submit ----
+        async submitJob() {
+          this.submitError = '';
+          this.submitSuccess = false;
+          if (!this.aoi.file) { this.submitError = 'Загрузите GeoJSON файл'; return; }
+          if (this.dateMode === 'single' && !this.form.date) { this.submitError = 'Укажите дату'; return; }
+          if (this.dateMode === 'range' && (!this.form.date_start || !this.form.date_end)) {
+            this.submitError = 'Укажите начало и конец диапазона'; return;
+          }
+          if (this.form.product === 'Custom' && this.form.custom_bands.length === 0) {
+            this.submitError = 'Выберите хотя бы один канал для Custom'; return;
+          }
+          this.submitting = true;
+          const fd = new FormData();
+          fd.append('geojson_file', this.aoi.file);
+          fd.append('date', this.dateMode === 'single' ? this.form.date : '');
+          fd.append('date_start', this.dateMode === 'range' ? this.form.date_start : '');
+          fd.append('date_end',   this.dateMode === 'range' ? this.form.date_end   : '');
+          fd.append('date_step',  this.dateMode === 'range' ? this.form.date_step  : '1');
+          fd.append('shape_name', this.form.shape_name || '');
+          fd.append('product', this.form.product);
+          fd.append('custom_bands', this.form.custom_bands.join(','));
+          fd.append('max_cloud', this.form.max_cloud);
+          fd.append('win_main', this.form.win_main);
+          fd.append('win_fill', this.form.win_fill);
+          fd.append('only_missing', this.form.only_missing ? 'true' : 'false');
+          fd.append('single_raster', this.form.single_raster ? 'true' : 'false');
+          fd.append('account_id', this.form.account_id || '');
+          try {
+            const resp = await fetch('/api/submit', { method: 'POST', body: fd });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.detail || JSON.stringify(data));
+            this.submitSuccess = true;
+            this.runningCount++;
+          } catch (err) {
+            this.submitError = err.message;
+          } finally {
+            this.submitting = false;
+          }
+        },
+
+        // ---- jobs ----
+        async loadJobs() {
+          try {
+            const resp = await fetch('/api/jobs');
+            const fresh = await resp.json();
+            // сохраняем состояние открытых логов при обновлении
+            const prev = {};
+            for (const j of this.jobs) prev[j.id] = { _showLog: j._showLog, _log: j._log };
+            this.jobs = fresh.map(j => ({
+              ...j,
+              _showLog: prev[j.id]?._showLog || false,
+              _log:     prev[j.id]?._log     || '',
+            }));
+            this.runningCount = this.jobs.filter(j => j.status === 'running' || j.status === 'pending').length;
+          } catch(e) {}
+        },
+
+        async pollRunning() {
+          if (this.runningCount > 0 || this.tab === 'jobs') {
+            await this.loadJobs();
+            // автообновляем логи открытых задач
+            for (const job of this.jobs) {
+              if (job._showLog) await this.loadLog(job);
+            }
+          }
+        },
+
+        async loadLog(job) {
+          try {
+            const resp = await fetch(`/api/jobs/${job.id}/log`);
+            const data = await resp.json();
+            job._log = data.log || '(пусто)';
+          } catch(e) {}
+        },
+
+        async cancelJob(id) {
+          await fetch(`/api/jobs/${id}/cancel`, { method: 'POST' });
+          await this.loadJobs();
+        },
+
+        async deleteJob(id) {
+          await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
+          this.jobs = this.jobs.filter(j => j.id !== id);
+        },
+
+        statusLabel(s) {
+          const m = {
+            pending:    'В очереди',
+            running:    'Выполняется',
+            done:       'Готово',
+            error:      'Ошибка',
+            cancelling: 'Отмена...',
+            cancelled:  'Отменено',
+          };
+          return m[s] || s;
+        },
+
+        formatDate(iso) {
+          if (!iso) return '';
+          try {
+            return new Date(iso + 'Z').toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+          } catch { return iso; }
+        },
+
+        // ---- accounts ----
+        async loadAccounts() {
+          try {
+            const resp = await fetch('/api/accounts');
+            this.accounts = await resp.json();
+            const def = this.accounts.find(a => a.is_default);
+            if (def && !this.form.account_id) this.form.account_id = def.id;
+          } catch(e) {}
+        },
+
+        handleCredFile(event) {
+          this.newAcc.credentials_file = event.target.files[0] || null;
+        },
+
+        async addAccount() {
+          this.addAccError = '';
+          if (!this.newAcc.name.trim()) { this.addAccError = 'Введите название'; return; }
+          this.addAccLoading = true;
+          const fd = new FormData();
+          fd.append('name', this.newAcc.name);
+          fd.append('acc_type', this.newAcc.type);
+          fd.append('project_id', this.newAcc.project_id || '');
+          if (this.newAcc.type === 'service_account' && this.newAcc.credentials_file) {
+            fd.append('credentials_file', this.newAcc.credentials_file);
+          } else if (this.newAcc.credentials_text) {
+            fd.append('credentials_text', this.newAcc.credentials_text);
+          } else {
+            this.addAccError = 'Загрузите JSON файл или вставьте credentials';
+            this.addAccLoading = false;
+            return;
+          }
+          try {
+            const resp = await fetch('/api/accounts', { method: 'POST', body: fd });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.detail || JSON.stringify(data));
+            this.newAcc = { name: '', type: 'service_account', project_id: '', credentials_text: '', credentials_file: null };
+            this.showAddAccount = false;
+            await this.loadAccounts();
+          } catch(e) {
+            this.addAccError = e.message;
+          } finally {
+            this.addAccLoading = false;
+          }
+        },
+
+        async setDefaultAccount(id) {
+          await fetch(`/api/accounts/${id}/set-default`, { method: 'POST' });
+          await this.loadAccounts();
+        },
+
+        async removeAccount(id) {
+          await fetch(`/api/accounts/${id}`, { method: 'DELETE' });
+          this.accounts = this.accounts.filter(a => a.id !== id);
+        },
+
+        // ---- settings ----
+        async loadSettings() {
+          try {
+            const resp = await fetch('/api/settings');
+            this.settings = await resp.json();
+          } catch(e) {}
+        },
+
+        async saveSettings() {
+          this.settingsSaved = false;
+          try {
+            await fetch('/api/settings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(this.settings),
+            });
+            this.settingsSaved = true;
+            setTimeout(() => this.settingsSaved = false, 3000);
+          } catch(e) {}
+        },
+      };
+    }
+  </script>
+</body>
+</html>
