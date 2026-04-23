@@ -42,6 +42,11 @@ def init_db():
                 value TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS bot_subscribers (
+                chat_id    INTEGER PRIMARY KEY,
+                created_at TEXT NOT NULL
+            );
+
             INSERT OR IGNORE INTO settings (key, value) VALUES
                 ('project_id',    ''),
                 ('save_path',     '/data'),
@@ -152,6 +157,23 @@ def set_default_account(account_id: str):
 def delete_account(account_id: str):
     with _conn() as conn:
         conn.execute("DELETE FROM accounts WHERE id=?", (account_id,))
+
+def add_subscriber(chat_id: int):
+    now = datetime.utcnow().isoformat()
+    with _conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO bot_subscribers (chat_id, created_at) VALUES (?,?)",
+            (chat_id, now),
+        )
+
+def remove_subscriber(chat_id: int):
+    with _conn() as conn:
+        conn.execute("DELETE FROM bot_subscribers WHERE chat_id=?", (chat_id,))
+
+def get_subscribers() -> list:
+    with _conn() as conn:
+        rows = conn.execute("SELECT chat_id FROM bot_subscribers").fetchall()
+    return [r["chat_id"] for r in rows]
 
 def _account_row(row: sqlite3.Row) -> Dict:
     d = dict(row)

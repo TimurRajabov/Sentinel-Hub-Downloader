@@ -27,3 +27,6 @@ certifi
 
 
 fiona
+
+python-telegram-bot>=20.0
+ollama

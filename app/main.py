@@ -1,10 +1,13 @@
 """FastAPI application — Sentinel Hub Downloader."""
 
+import logging
 import os
 import uuid
 import json
 import shutil
 import tempfile
+import asyncio
+from contextlib import asynccontextmanager
 from typing import List, Optional
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
@@ -13,6 +16,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from app import storage, worker
+from app import bot as telegram_bot
+
+logger = logging.getLogger(__name__)
 
 storage.init_db()
 
@@ -21,7 +27,28 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
-app = FastAPI(title="Sentinel Hub Downloader", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app_instance: FastAPI):
+    bot_app = telegram_bot.build_bot()
+    await bot_app.initialize()
+    await bot_app.start()
+    await bot_app.updater.start_polling(drop_pending_updates=True)
+    poller = asyncio.create_task(telegram_bot.notification_loop(bot_app.bot))
+    logger.info("Telegram bot started")
+    yield
+    poller.cancel()
+    try:
+        await poller
+    except asyncio.CancelledError:
+        pass
+    await bot_app.updater.stop()
+    await bot_app.stop()
+    await bot_app.shutdown()
+    logger.info("Telegram bot stopped")
+
+
+app = FastAPI(title="Sentinel Hub Downloader", version="1.0.0", lifespan=lifespan)
 
 class SettingsIn(BaseModel):
     project_id: str = ""
