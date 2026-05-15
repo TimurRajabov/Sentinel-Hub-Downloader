@@ -62,7 +62,9 @@ def _looks_like_tiff(path: str) -> bool:
     try:
         with open(path, "rb") as f:
             head = f.read(4)
-        return head in (b"II*\x00", b"MM\x00*")
+        # Classic TIFF: II*\x00 (LE) or MM\x00* (BE)
+        # BigTIFF:      II+\x00 (LE) or MM\x00+ (BE)
+        return head in (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
     except Exception:
         return False
 
@@ -550,6 +552,7 @@ def merge_multiband_to_path(tile_paths: List[str], out_path: str):
             "compress": "lzw",
             "nodata": 0,
             "dtype": str(mosaic.dtype),
+            "BIGTIFF": "YES",
         })
 
         with rasterio.open(out_path, "w", **out_meta) as dst:
@@ -671,6 +674,7 @@ def merge_multiband(tile_paths: List[str], out_path: str):
             "compress": "lzw",
             "nodata": 0,
             "dtype": str(mosaic.dtype),
+            "BIGTIFF": "YES",
         })
 
         with rasterio.open(out_path, "w", **out_meta) as dst:
