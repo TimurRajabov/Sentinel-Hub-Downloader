@@ -7,6 +7,7 @@ import time
 import math
 import argparse
 import zipfile
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -26,7 +27,7 @@ load_dotenv()
 PROJECT_ID = os.getenv("PROJECT_ID")
 SAVE_PATH = os.getenv("SAVE_PATH", "/data")
 
-MAX_CLOUD_PERCENT = int(os.getenv("MAX_CLOUD_PERCENT", "100"))
+MAX_CLOUD_PERCENT = int(os.getenv("MAX_CLOUD_PERCENT", "30"))
 SCALE_M = int(os.getenv("SCALE_M", "10"))
 
 MAX_GRID = int(os.getenv("MAX_GRID", "30000"))
@@ -45,6 +46,8 @@ MAX_WORKERS = int(os.getenv("MAX_WORKERS", "4"))
 SESSION = requests.Session()
 SESSION.headers.update({"User-Agent": "gee-downloader/1.0"})
 
+_GEE_SEMAPHORE = threading.Semaphore(2)
+
 def safe_filename(s: str) -> str:
     s = (s or "").strip()
     s = s.replace(" ", "_")
@@ -62,8 +65,6 @@ def _looks_like_tiff(path: str) -> bool:
     try:
         with open(path, "rb") as f:
             head = f.read(4)
-        # Classic TIFF: II*\x00 (LE) or MM\x00* (BE)
-        # BigTIFF:      II+\x00 (LE) or MM\x00+ (BE)
         return head in (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
     except Exception:
         return False
@@ -125,7 +126,7 @@ def download_url_to_file(url: str, outfile: str) -> None:
             os.makedirs(out_dir, exist_ok=True)
         tmp = outfile + ".part"
         try:
-            with SESSION.get(url, stream=True, timeout=HTTP_TIMEOUT) as r:
+            with _GEE_SEMAPHORE, SESSION.get(url, stream=True, timeout=HTTP_TIMEOUT) as r:
                 if r.status_code in (429, 500, 502, 503, 504):
                     raise RequestException(f"{r.status_code} {r.reason} for url: {url}")
                 r.raise_for_status()
@@ -247,32 +248,24 @@ def build_filled_composite(
     if win_fill > win_main:
         try:
             fill = build_window_composite(region, target_day, win_fill)
-            filled = ee.Image(ee.Algorithms.If(
-                main.bandNames().size().gt(0),
-                ee.Image(ee.Algorithms.If(
-                    fill.bandNames().size().gt(0),
-                    fill.blend(main),
-                    main,
-                )),
-                fill,
-            ))
+            filled = fill.blend(main)
         except Exception:
-            filled = main
+            pass
+
+    win_wide = win_fill * 2
+    if win_wide <= 180:
+        try:
+            wide = build_window_composite(region, target_day, win_wide)
+            filled = wide.blend(filled)
+        except Exception:
+            pass
 
     if hole_heal_m and hole_heal_m > 0:
         neigh = filled.focal_median(radius=hole_heal_m, units="meters")
-        filled = ee.Image(ee.Algorithms.If(
-            filled.bandNames().size().gt(0),
-            neigh.blend(filled),
-            filled,
-        ))
+        filled = neigh.blend(filled)
 
     if final_force_unmask_zero:
-        filled = ee.Image(ee.Algorithms.If(
-            filled.bandNames().size().gt(0),
-            filled.unmask(0),
-            filled,
-        ))
+        filled = filled.unmask(0)
 
     return filled
 
@@ -573,11 +566,6 @@ def download_rgb_tile_adaptive(
     max_depth: int = 4,
     bands: Optional[List[str]] = None,
 ) -> None:
-    """
-    Пытается скачать tile с указанными каналами.
-    Если запрос слишком большой для EE, делит bbox на 4 части,
-    скачивает их рекурсивно и мержит обратно в один out_tif.
-    """
     tile_region = ee.Geometry.Rectangle([l, b, rr, tt])
 
     try:
@@ -622,7 +610,6 @@ def download_rgb_tile_adaptive(
         merge_multiband_to_path(child_paths, out_tif)
 
 def _get_bands_for_product(product: str, custom_bands: Optional[List[str]] = None) -> Optional[List[str]]:
-    """Возвращает список каналов для заданного продукта. None = NDVI (особый случай)."""
     if product == "RGB":
         return ["B4", "B3", "B2"]
     elif product == "RGB+NIR":
@@ -695,7 +682,6 @@ def rgb_tif_to_jpg(tif_path: str, jpg_path: str):
     Image.fromarray(img).save(jpg_path, quality=95)
 
 def ndvi_tif_to_jpg(tif_path: str, jpg_path: str):
-    """NDVI [-1..1] → цветная визуализация (красный=низкий, зелёный=высокий)."""
     with rasterio.open(tif_path) as src:
         arr = src.read(1).astype(np.float32)
 

@@ -1,6 +1,5 @@
-"""SQLite-based persistent storage for jobs and settings."""
-
 import sqlite3
+import threading
 import json
 import os
 from datetime import datetime
@@ -8,8 +7,12 @@ from typing import List, Optional, Dict, Any
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "sentinel_hub.db")
 
+_WRITE_LOCK = threading.Lock()
+
 def _conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -52,15 +55,15 @@ def init_db():
                 ('save_path',     '/data'),
                 ('scale_m',       '10'),
                 ('max_cloud',     '20'),
-                ('max_workers',   '4'),
-                ('win_main',      '3'),
-                ('win_fill',      '15'),
+                ('max_workers',   '2'),
+                ('win_main',      '15'),
+                ('win_fill',      '45'),
                 ('dates_dir',     '');
         """)
 
 def create_job(job_id: str, params: Dict[str, Any]) -> Dict:
     now = datetime.utcnow().isoformat()
-    with _conn() as conn:
+    with _WRITE_LOCK, _conn() as conn:
         conn.execute(
             "INSERT INTO jobs (id, created_at, updated_at, status, params) VALUES (?,?,?,?,?)",
             (job_id, now, now, "pending", json.dumps(params, ensure_ascii=False)),
@@ -86,18 +89,18 @@ def update_job(job_id: str, **kwargs):
         return
     sets["updated_at"] = datetime.utcnow().isoformat()
     sql = "UPDATE jobs SET " + ", ".join(f"{k}=?" for k in sets) + " WHERE id=?"
-    with _conn() as conn:
+    with _WRITE_LOCK, _conn() as conn:
         conn.execute(sql, list(sets.values()) + [job_id])
 
 def append_log(job_id: str, line: str):
-    with _conn() as conn:
+    with _WRITE_LOCK, _conn() as conn:
         conn.execute(
             "UPDATE jobs SET log = log || ?, updated_at=? WHERE id=?",
             (line + "\n", datetime.utcnow().isoformat(), job_id),
         )
 
 def delete_job(job_id: str):
-    with _conn() as conn:
+    with _WRITE_LOCK, _conn() as conn:
         conn.execute("DELETE FROM jobs WHERE id=?", (job_id,))
 
 def get_settings() -> Dict[str, str]:
@@ -106,7 +109,7 @@ def get_settings() -> Dict[str, str]:
     return {r["key"]: r["value"] for r in rows}
 
 def save_settings(data: Dict[str, str]):
-    with _conn() as conn:
+    with _WRITE_LOCK, _conn() as conn:
         for k, v in data.items():
             conn.execute(
                 "INSERT INTO settings (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -124,7 +127,7 @@ def _row_to_dict(row: sqlite3.Row) -> Dict:
 def create_account(account_id: str, name: str, acc_type: str,
                    project_id: str, credentials: Dict) -> Dict:
     now = datetime.utcnow().isoformat()
-    with _conn() as conn:
+    with _WRITE_LOCK, _conn() as conn:
         count = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
         is_default = 1 if count == 0 else 0
         conn.execute(
@@ -150,24 +153,24 @@ def list_accounts() -> List[Dict]:
     return [_account_row(r) for r in rows]
 
 def set_default_account(account_id: str):
-    with _conn() as conn:
+    with _WRITE_LOCK, _conn() as conn:
         conn.execute("UPDATE accounts SET is_default=0")
         conn.execute("UPDATE accounts SET is_default=1 WHERE id=?", (account_id,))
 
 def delete_account(account_id: str):
-    with _conn() as conn:
+    with _WRITE_LOCK, _conn() as conn:
         conn.execute("DELETE FROM accounts WHERE id=?", (account_id,))
 
 def add_subscriber(chat_id: int):
     now = datetime.utcnow().isoformat()
-    with _conn() as conn:
+    with _WRITE_LOCK, _conn() as conn:
         conn.execute(
             "INSERT OR IGNORE INTO bot_subscribers (chat_id, created_at) VALUES (?,?)",
             (chat_id, now),
         )
 
 def remove_subscriber(chat_id: int):
-    with _conn() as conn:
+    with _WRITE_LOCK, _conn() as conn:
         conn.execute("DELETE FROM bot_subscribers WHERE chat_id=?", (chat_id,))
 
 def get_subscribers() -> list:

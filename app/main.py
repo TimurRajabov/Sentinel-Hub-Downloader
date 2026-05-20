@@ -1,5 +1,3 @@
-"""FastAPI application — Sentinel Hub Downloader."""
-
 import logging
 import os
 import uuid
@@ -27,7 +25,6 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
-
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
     bot_app = telegram_bot.build_bot()
@@ -46,7 +43,6 @@ async def lifespan(app_instance: FastAPI):
     await bot_app.stop()
     await bot_app.shutdown()
     logger.info("Telegram bot stopped")
-
 
 app = FastAPI(title="Sentinel Hub Downloader", version="1.0.0", lifespan=lifespan)
 
@@ -171,8 +167,6 @@ async def submit_job(
     single_raster: Optional[str] = Form("false"),
     account_id: Optional[str] = Form(None),
 ):
-    """Accept form data, save GeoJSON to disk, enqueue job."""
-
     geojson_path = None
 
     if geojson_file and geojson_file.filename:

@@ -1,8 +1,3 @@
-"""
-Background worker: executes download jobs using 10_10.py logic.
-Each job runs in its own thread.
-"""
-
 import sys
 import os
 import io
@@ -19,7 +14,6 @@ _running: Dict[str, threading.Thread] = {}
 _cancel_flags: Dict[str, threading.Event] = {}
 
 def _ee_init(ee, account: dict, project_id: str):
-    """Initialize Earth Engine with the given account credentials."""
     creds = account.get("credentials") or {}
     acc_type = account.get("type", "service_account")
 
@@ -57,8 +51,6 @@ def _ee_init(ee, account: dict, project_id: str):
         ee.Initialize(project=project_id)
 
 class _LogWriter(io.TextIOBase):
-    """Redirects print() output to job log in DB."""
-
     def __init__(self, job_id: str, original_stdout):
         self.job_id = job_id
         self._orig = original_stdout
@@ -93,8 +85,8 @@ def _run_job(job_id: str, params: Dict[str, Any]):
         scale_m     = int(params.get("scale_m")    or settings.get("scale_m")    or 10)
         max_cloud   = int(params.get("max_cloud")   or settings.get("max_cloud")   or 20)
         max_workers = int(params.get("max_workers") or settings.get("max_workers") or 4)
-        win_main    = int(params.get("win_main")    or settings.get("win_main")    or 3)
-        win_fill    = int(params.get("win_fill")    or settings.get("win_fill")    or 15)
+        win_main    = int(params.get("win_main")    or settings.get("win_main")    or 15)
+        win_fill    = int(params.get("win_fill")    or settings.get("win_fill")    or 45)
 
         import importlib.util as _ilu
         _spec = _ilu.spec_from_file_location("ten_ten", os.path.join(ROOT, "10_10.py"))
@@ -260,7 +252,6 @@ def _run_job(job_id: str, params: Dict[str, Any]):
         _cancel_flags.pop(job_id, None)
 
 def submit(job_id: str, params: Dict[str, Any]):
-    """Start job in background thread."""
     ev = threading.Event()
     _cancel_flags[job_id] = ev
     t = threading.Thread(target=_run_job, args=(job_id, params), daemon=True, name=f"job-{job_id}")

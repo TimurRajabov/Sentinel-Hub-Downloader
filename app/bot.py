@@ -1,5 +1,3 @@
-"""Telegram bot for Sentinel Hub Downloader with Ollama AI assistant."""
-
 import asyncio
 import json
 import logging
@@ -25,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
-POLL_INTERVAL = 30  # seconds between notification checks
+POLL_INTERVAL = 30
 
 _STATUS_ICONS = {
     "done": "✅",
@@ -137,7 +135,6 @@ _SYSTEM_PROMPT = (
     "Do not use markdown unless it clearly helps readability."
 )
 
-
 def _execute_tool(name: str, args: dict) -> dict:
     if name == "get_stats":
         jobs = storage.list_jobs()
@@ -201,7 +198,6 @@ def _execute_tool(name: str, args: dict) -> dict:
 
     return {"error": f"Unknown tool: {name}"}
 
-
 def _ask_ollama_sync(user_text: str) -> str:
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
@@ -225,7 +221,6 @@ def _ask_ollama_sync(user_text: str) -> str:
             })
     return "Could not complete the request after multiple steps."
 
-
 def _format_job_line(job: dict) -> str:
     icon = _STATUS_ICONS.get(job["status"], "•")
     date = job["created_at"][:10]
@@ -233,9 +228,6 @@ def _format_job_line(job: dict) -> str:
     product = params.get("product", "") if isinstance(params, dict) else ""
     extra = f" [{product}]" if product else ""
     return f"{icon} {job['id']}{extra} — {date}"
-
-
-# ── Commands ──────────────────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage.add_subscriber(update.effective_chat.id)
@@ -254,7 +246,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• What are the current settings?"
     )
 
-
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     jobs = storage.list_jobs()
     by_status: dict = {}
@@ -266,7 +257,6 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         icon = _STATUS_ICONS.get(s, "•")
         lines.append(f"{icon} {s}: {count}")
     await update.message.reply_text("\n".join(lines))
-
 
 async def cmd_jobs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     jobs = storage.list_jobs(limit=10)
@@ -283,7 +273,6 @@ async def cmd_jobs(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
     markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("\n".join(lines), reply_markup=markup)
-
 
 async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -303,7 +292,6 @@ async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
         excerpt = "...(truncated)\n" + excerpt
     await update.message.reply_text(f"Log for {job_id} [{job['status']}]:\n\n{excerpt}")
 
-
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Usage: /cancel <job_id>")
@@ -322,18 +310,15 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage.update_job(job_id, status="cancelling")
     await update.message.reply_text(f"⏹ Cancelling job {job_id}...")
 
-
 async def cmd_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage.add_subscriber(update.effective_chat.id)
     await update.message.reply_text(
         "✅ Subscribed! You'll get a message when any job finishes or fails."
     )
 
-
 async def cmd_unsubscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage.remove_subscriber(update.effective_chat.id)
     await update.message.reply_text("🚫 Unsubscribed from notifications.")
-
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -376,7 +361,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             excerpt = "...(truncated)\n" + excerpt
         await query.message.reply_text(f"Log [{job['status']}]:\n\n{excerpt}")
 
-
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_chat_action("typing")
     try:
@@ -386,11 +370,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error("Bot error: %s", exc)
         await update.message.reply_text(f"Error: {exc}")
 
-
-# ── Notification poller ───────────────────────────────────────────────────────
-
 async def notification_loop(bot):
-    """Watch for job status changes and notify subscribers."""
     known: dict[str, str] = {}
     for job in storage.list_jobs():
         known[job["id"]] = job["status"]
@@ -433,9 +413,6 @@ async def notification_loop(bot):
             raise
         except Exception as exc:
             logger.error("Notification poller error: %s", exc)
-
-
-# ── App builder ───────────────────────────────────────────────────────────────
 
 def build_bot() -> Application:
     application = Application.builder().token(TELEGRAM_TOKEN).build()
