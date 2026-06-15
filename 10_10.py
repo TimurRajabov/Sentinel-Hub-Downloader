@@ -225,7 +225,7 @@ def _collection(region: ee.Geometry, start: str, end: str) -> ee.ImageCollection
     )
 
 def build_window_composite(region: ee.Geometry, center_day: datetime, window_days: int) -> ee.Image:
-    start = (center_day - timedelta(days=window_days)).strftime("%Y-%m-%d")
+    start = center_day.strftime("%Y-%m-%d")
     end = (center_day + timedelta(days=window_days + 1)).strftime("%Y-%m-%d")
     col = _collection(region, start, end)
     return col.median().clip(region)
@@ -822,6 +822,46 @@ def process_job(
         print(f"shape: {shape_name}")
     if prod_desc:
         print(f"prodDesc: {prod_desc}")
+    _win_wide = win_fill * 2
+    _s_main  = target_day.strftime("%Y-%m-%d")
+    _e_main  = (target_day + timedelta(days=win_main + 1)).strftime("%Y-%m-%d")
+    _s_fill  = target_day.strftime("%Y-%m-%d")
+    _e_fill  = (target_day + timedelta(days=win_fill + 1)).strftime("%Y-%m-%d")
+    _s_wide  = target_day.strftime("%Y-%m-%d")
+    _e_wide  = (target_day + timedelta(days=_win_wide + 1)).strftime("%Y-%m-%d")
+    print(f"  диапазон main:  {_s_main} → {_e_main}")
+    print(f"  диапазон fill:  {_s_fill} → {_e_fill}")
+    print(f"  диапазон wide:  {_s_wide} → {_e_wide}")
+
+    def _get_scene_dates(start: str, end: str) -> List[str]:
+        try:
+            col = _collection(region, start, end)
+            ts_list = col.aggregate_array("system:time_start").getInfo()
+            if not ts_list:
+                return []
+            return sorted(set(
+                datetime.utcfromtimestamp(ts / 1000).strftime("%Y-%m-%d")
+                for ts in ts_list
+            ))
+        except Exception:
+            return []
+
+    _dates_main = _get_scene_dates(_s_main, _e_main)
+    if _dates_main:
+        print(f"  ✅ снимки S2 (main ±{win_main}д): {', '.join(_dates_main)}")
+    else:
+        print(f"  ⚠ снимков в main-окне нет")
+        _dates_fill = _get_scene_dates(_s_fill, _e_fill)
+        if _dates_fill:
+            print(f"  ✅ снимки S2 (fill ±{win_fill}д): {', '.join(_dates_fill)}")
+        else:
+            print(f"  ⚠ снимков в fill-окне нет")
+            _dates_wide = _get_scene_dates(_s_wide, _e_wide)
+            if _dates_wide:
+                print(f"  ✅ снимки S2 (wide ±{_win_wide}д): {', '.join(_dates_wide)}")
+            else:
+                print(f"  ❌ снимков не найдено ни в одном окне!")
+
     print(f"export CRS (UTM): {job_crs}")
 
     ncols, nrows, px_w, px_h, max_side = choose_tiling(left, bottom, right, top, SCALE_M, MAX_GRID, MAX_REQUEST_BYTES)

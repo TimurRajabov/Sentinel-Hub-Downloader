@@ -562,6 +562,7 @@
                   Например шаг <strong style="color:#818cf8;">30</strong> = каждые 30 дней.
                   Итого дат: <strong style="color:#a5b4fc;" x-text="calcDateCount()"></strong>
                 </p>
+                <p class="text-xs mt-1 font-mono" style="color: #6366f1;" x-text="previewDates()"></p>
               </div>
             </div>
 
@@ -640,11 +641,11 @@
 
               <div class="grid grid-cols-2 gap-4">
                 <div>
-                  <label class="label">Окно main (±дней)</label>
+                  <label class="label">Окно main (дней вперёд)</label>
                   <input type="number" min="0" max="60" class="input" x-model="form.win_main" />
                 </div>
                 <div>
-                  <label class="label">Окно fill (±дней)</label>
+                  <label class="label">Окно fill (дней вперёд)</label>
                   <input type="number" min="0" max="120" class="input" x-model="form.win_fill" />
                 </div>
               </div>
@@ -699,7 +700,7 @@
               </div>
               <div class="flex justify-between items-center">
                 <span style="color: #6b7280;">Окно</span>
-                <span class="text-slate-100 text-xs font-mono" x-text="'main ±' + form.win_main + 'd · fill ±' + form.win_fill + 'd'"></span>
+                <span class="text-slate-100 text-xs font-mono" x-text="'main +' + form.win_main + 'd · fill +' + form.win_fill + 'd'"></span>
               </div>
             </div>
 
@@ -1228,13 +1229,33 @@
 
         calcDateCount() {
           try {
-            const parse = s => { const [d,m,y] = s.split('.'); return new Date(y, m-1, d); };
+            const parse = s => { const [d,m,y] = s.split('.'); return new Date(+y, +m-1, +d); };
             const s = parse(this.form.date_start);
             const e = parse(this.form.date_end);
             const step = Math.max(1, parseInt(this.form.date_step) || 1);
             if (isNaN(s) || isNaN(e) || e < s) return '—';
             return Math.floor((e - s) / (step * 86400000)) + 1;
           } catch { return '—'; }
+        },
+
+        previewDates() {
+          try {
+            const parse = s => { const [d,m,y] = s.split('.'); return new Date(+y, +m-1, +d); };
+            const start = parse(this.form.date_start);
+            const end   = parse(this.form.date_end);
+            const step  = Math.max(1, parseInt(this.form.date_step) || 1);
+            if (isNaN(start) || isNaN(end) || end < start) return '';
+            const fmt = d => String(d.getDate()).padStart(2,'0') + '.' +
+                             String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
+            const dates = [];
+            let cur = new Date(start);
+            while (cur <= end && dates.length <= 50) {
+              dates.push(fmt(new Date(cur)));
+              cur = new Date(cur.getTime() + step * 86400000);
+            }
+            if (dates.length <= 6) return dates.join(' · ');
+            return dates.slice(0,3).join(' · ') + ' ... ' + dates.slice(-2).join(' · ');
+          } catch { return ''; }
         },
 
         toggleBand(b) {
